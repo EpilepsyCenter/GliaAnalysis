@@ -1,0 +1,11 @@
+dash>=2.18
+dash-bootstrap-components>=1.6
+pandas>=2.2
+numpy>=1.26
+scikit-image>=0.24
+scikit-learn>=1.5
+scipy>=1.13
+pingouin>=0.5.5
+plotly>=5.22
+opencv-python-headless>=4.10
+tifffile>=2024.6.18

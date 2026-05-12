@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+.DS_Store
+.ipynb_checkpoints/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Local data / outputs
+data/
+output/
+ThresholdedImages/
+SingleCells/
+SkeletonResults/
+SkeletonImages/
+*.tif
+*.tiff
+!tests/**/*.tif
+
+# Local settings
+.streamlit/secrets.toml
+.claude/
