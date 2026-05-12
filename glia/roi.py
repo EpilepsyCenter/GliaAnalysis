@@ -1,17 +1,26 @@
-"""Rasterize Plotly ROI shapes into binary masks.
+"""Rasterize Plotly ROI shapes into binary masks + per-project ROI store.
 
 The Setup → ROI subtab stores ROIs as raw Plotly layout-shape dicts. To
 use them downstream (threshold preview, segmentation) we need them as
 ``H x W`` boolean numpy arrays in image-pixel coordinates. This module
 handles both the rect and closed-path varieties Plotly emits.
+
+It also reads / writes the per-project ROI persistence file
+``<project>/.gliaanalysis_rois.json`` so the work survives an app
+restart.
 """
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 
 import numpy as np
 from skimage.draw import polygon as draw_polygon
+
+
+ROI_PERSIST_FILENAME = ".gliaanalysis_rois.json"
 
 
 _PATH_COORD_RE = re.compile(
@@ -97,3 +106,45 @@ def per_roi_masks(
     """List of (tag, mask) for each ROI, preserving the order from the editor."""
     return [(r.get("tag", ""), roi_mask(r.get("shape", {}), height, width))
             for r in rois]
+
+
+# ── Per-project ROI persistence ──────────────────────────────────────
+
+
+def save_project_rois(project_dir: str, rois: dict) -> str | None:
+    """Write the per-image ROI map to <project>/.gliaanalysis_rois.json.
+
+    ``rois`` is keyed by absolute image path; we strip the project prefix
+    on disk so the file stays portable if the project folder moves.
+    """
+    if not project_dir or not Path(project_dir).is_dir():
+        return None
+    project = Path(project_dir).resolve()
+    portable: dict[str, list[dict]] = {}
+    for full_path, items in (rois or {}).items():
+        try:
+            rel = str(Path(full_path).resolve().relative_to(project))
+        except ValueError:
+            rel = Path(full_path).name
+        portable[rel] = items
+    path = project / ROI_PERSIST_FILENAME
+    path.write_text(json.dumps(portable, indent=2))
+    return str(path)
+
+
+def load_project_rois(project_dir: str) -> dict:
+    """Return a dict {absolute_image_path: [roi entries]} or {} if absent."""
+    if not project_dir or not Path(project_dir).is_dir():
+        return {}
+    project = Path(project_dir).resolve()
+    path = project / ROI_PERSIST_FILENAME
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return {}
+    rehydrated: dict[str, list[dict]] = {}
+    for rel, items in (data or {}).items():
+        rehydrated[str(project / rel)] = items
+    return rehydrated

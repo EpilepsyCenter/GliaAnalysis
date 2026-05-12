@@ -195,7 +195,15 @@ app.layout = html.Div(
     Input("session-id", "data"),
 )
 def init_session(sid):
-    return sid or server_state.create_session()
+    sid = sid or server_state.create_session()
+    # Rehydrate user-scoped prefs (FIJI path) on first hit of the session.
+    try:
+        from glia.settings import apply_user_settings, load_user_settings
+        apply_user_settings(server_state.get_session(sid),
+                            load_user_settings())
+    except Exception:
+        pass
+    return sid
 
 
 # Theme toggle — clientside flip <html data-theme="...">
@@ -302,6 +310,34 @@ def on_browse_project(n_clicks, sid, refresh):
         return no_update, no_update
     state = server_state.get_session(sid)
     state.project_dir = folder
+    # Rehydrate ROIs from <project>/.gliaanalysis_rois.json if present.
+    try:
+        from glia.roi import load_project_rois
+        loaded = load_project_rois(folder)
+        if loaded:
+            state.extra["rois"] = loaded
+    except Exception:
+        pass
+    # Restore the analysis params (threshold, area bounds, metadata fields,
+    # cluster k, stats factors) from .gliaanalysis_settings.json so the
+    # whole pipeline picks up where it left off.
+    try:
+        from glia.settings import apply_project_settings, load_project_settings
+        apply_project_settings(state, load_project_settings(folder))
+    except Exception:
+        pass
+    # Rehydrate the features dataframe (with parsed metadata + any prior
+    # PCA / cluster assignments) so the user doesn't have to rerun the
+    # Features and Metadata tabs after reopening.
+    try:
+        from glia.features import load_features_df
+        df_loaded = load_features_df(folder)
+        if df_loaded is not None:
+            state.features_df = df_loaded
+            if "Cluster" in df_loaded.columns:
+                state.k = int(df_loaded["Cluster"].nunique())
+    except Exception:
+        pass
     info = _project_info_block(folder)
     return info, (refresh or 0) + 1
 
@@ -331,6 +367,11 @@ def _project_info_block(folder: str) -> html.Div:
 def on_fiji_path_change(path, sid):
     state = server_state.get_session(sid)
     state.fiji_path = path or ""
+    try:
+        from glia.settings import save_user_settings
+        save_user_settings(state)
+    except Exception:
+        pass
     if not path:
         return html.Div("Not configured", className="file-info",
                         style={"opacity": "0.5"})

@@ -443,6 +443,11 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
 
     state.animal_id_col = animal
     state.factor_cols = factors
+    try:
+        from glia.settings import save_project_settings
+        save_project_settings(state.project_dir, state)
+    except Exception:
+        pass
 
     feats = _feature_columns(df)
     # Clean inf so aggregation/mean doesn't propagate them.

@@ -86,6 +86,7 @@ class SegmentReport:
     n_thresholded: int = 0
     n_single_cells: int = 0
     n_skeleton_csvs: int = 0
+    n_cleared: int = 0          # prior-run files wiped before this run
     phase1_stdout: str = ""
     skipped: list[str] = field(default_factory=list)
 
@@ -197,6 +198,32 @@ def run_pipeline(params: SegmentParams) -> SegmentReport:
     inputs = sorted([p for p in params.input_dir.glob("*.tif")] +
                     [p for p in params.input_dir.glob("*.tiff")])
     report.n_input_images = len(inputs)
+
+    # ── Wipe prior output ────────────────────────────────────────────
+    # Default behaviour is overwrite — if you re-run with a different
+    # threshold, the new component labels and indices won't line up with
+    # the old per-cell files, so leftover files create ID mismatches
+    # downstream. Wipe the four sub-folders fully.
+    cleared = 0
+    for d in (params.thresholded_dir, params.cells_dir,
+              params.skeleton_dir, params.skeleton_img_dir):
+        if d.exists():
+            for p in d.iterdir():
+                if p.is_file():
+                    try:
+                        p.unlink()
+                        cleared += 1
+                    except Exception:
+                        pass
+    # Also wipe Areas.csv leftover from threshold.ijm.
+    legacy_areas = params.thresholded_dir / "Areas.csv"
+    if legacy_areas.exists():
+        try:
+            legacy_areas.unlink()
+            cleared += 1
+        except Exception:
+            pass
+    report.n_cleared = cleared
 
     # ── Phase 1: FIJI thresholding ───────────────────────────────────
     params.thresholded_dir.mkdir(parents=True, exist_ok=True)

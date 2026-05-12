@@ -24,3 +24,8 @@ SkeletonImages/
 # Local settings
 .streamlit/secrets.toml
 .claude/
+
+# Per-project analysis state (written by the running app)
+.gliaanalysis_rois.json
+.gliaanalysis_settings.json
+_gliaanalysis/

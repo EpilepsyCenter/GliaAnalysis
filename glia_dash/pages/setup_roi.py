@@ -26,7 +26,7 @@ import plotly.graph_objects as go
 import tifffile
 from dash import ALL, Input, Output, State, callback, ctx, dcc, html, no_update
 
-from glia.roi import shape_anchor
+from glia.roi import save_project_rois, shape_anchor
 from glia_dash import server_state
 from glia_dash.components import empty_state
 
@@ -59,6 +59,12 @@ def _rois_for(sid: str | None, image_path: str) -> list[dict]:
 def _set_rois_for(sid: str | None, image_path: str, rois: list[dict]):
     state = server_state.get_session(sid)
     state.extra.setdefault("rois", {})[image_path] = rois
+    # Persist to disk under the project folder so the work survives a
+    # restart. Best-effort — swallow errors so the UI doesn't break.
+    try:
+        save_project_rois(state.project_dir, state.extra["rois"])
+    except Exception:
+        pass
 
 
 def _all_tags_in_project(sid: str | None) -> list[str]:

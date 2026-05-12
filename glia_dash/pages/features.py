@@ -261,6 +261,11 @@ def on_extract(n_clicks, sid):
 
     dt = time.time() - t0
     state.features_df = df
+    try:
+        from glia.features import save_features_df
+        save_features_df(state.project_dir, df)
+    except Exception:
+        pass
 
     summary = alert(
         f"✓ Extracted features for {len(df)} cells "

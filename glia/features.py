@@ -340,3 +340,43 @@ def merge_geometric_and_skeleton(
 ) -> pd.DataFrame:
     """Inner-join on cell ID, return the full 27-feature cell-level table."""
     return geom.merge(skel, on="ID", how="inner")
+
+
+# ── Per-project features-table persistence ──────────────────────────
+
+
+FEATURES_PERSIST_FILENAME = "features.csv"
+
+
+def features_persist_path(project_dir: str) -> Path | None:
+    if not project_dir or not Path(project_dir).is_dir():
+        return None
+    return Path(project_dir) / "_gliaanalysis" / FEATURES_PERSIST_FILENAME
+
+
+def save_features_df(project_dir: str, df: pd.DataFrame) -> str | None:
+    """Write the current features dataframe to <project>/_gliaanalysis/features.csv.
+
+    Includes whatever derived columns are present (PC1..PCN, Cluster,
+    morphology_label, parsed metadata). Best-effort — errors swallowed.
+    """
+    path = features_persist_path(project_dir)
+    if path is None or df is None:
+        return None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(path, index=False)
+    except Exception:
+        return None
+    return str(path)
+
+
+def load_features_df(project_dir: str) -> pd.DataFrame | None:
+    """Reload the persisted features table, or None if absent / unreadable."""
+    path = features_persist_path(project_dir)
+    if path is None or not path.exists():
+        return None
+    try:
+        return pd.read_csv(path)
+    except Exception:
+        return None

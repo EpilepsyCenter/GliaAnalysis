@@ -331,6 +331,13 @@ def on_apply(n_clicks, fields_csv, sep, sid):
     state.features_df = df
     state.metadata_cols = field_names
     state.metadata_sep = sep
+    try:
+        from glia.settings import save_project_settings
+        save_project_settings(state.project_dir, state)
+        from glia.features import save_features_df
+        save_features_df(state.project_dir, df)
+    except Exception:
+        pass
     return html.Div([
         alert(f"✓ Added {len(field_names) + 2} columns "
               f"({', '.join(field_names)}, roi_tag, cell_index).",

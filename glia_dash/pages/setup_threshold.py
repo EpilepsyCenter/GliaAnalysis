@@ -813,7 +813,8 @@ def mirror_setup_to_state(method, kind, slider, preprocess,
                           area_min, area_max, local_radius, sid):
     """Push every Setup-tab control value into the SessionState so the
     Segment tab can build a SegmentParams without needing Setup to be
-    mounted."""
+    mounted. Also snapshot the project settings so reopening the folder
+    restores the chosen threshold + area bounds."""
     state = server_state.get_session(sid)
     if method:
         state.threshold_method = method
@@ -827,4 +828,9 @@ def mirror_setup_to_state(method, kind, slider, preprocess,
     state.area_max = float(area_max or 0)
     if local_radius:
         state.local_radius = int(local_radius)
+    try:
+        from glia.settings import save_project_settings
+        save_project_settings(state.project_dir, state)
+    except Exception:
+        pass
     return no_update

@@ -617,6 +617,14 @@ def on_run(n_clicks, n_components, k, theme, sid):
     state.k = k
     state.pca_n_components = n_components
 
+    # Strip any columns left over from a prior Cluster run so fit_pca
+    # doesn't concat duplicate PC columns and the merge stays clean.
+    derived = [c for c in df.columns
+               if c == "Cluster" or c == "morphology_label"
+               or (c.startswith("PC") and c[2:].isdigit())]
+    if derived:
+        df = df.drop(columns=derived)
+
     # Some geometric features can be inf (e.g. radii_ratio when a shape is
     # degenerate). sklearn rejects inf, so clean before fitting; replace
     # inf with NaN, then impute NaN with the per-column median. Keeps the
@@ -646,6 +654,13 @@ def on_run(n_clicks, n_components, k, theme, sid):
     state.features_df = df_out
     state.cluster_labels = dict(assignments)
     state.extra["cluster_scores"] = scores
+    try:
+        from glia.settings import save_project_settings
+        save_project_settings(state.project_dir, state)
+        from glia.features import save_features_df
+        save_features_df(state.project_dir, df_out)
+    except Exception:
+        pass
 
     return _render_results(df_out, scan, scores, assignments,
                            overrides=state.cluster_labels, theme=theme)

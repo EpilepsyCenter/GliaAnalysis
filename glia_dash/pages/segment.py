@@ -153,9 +153,10 @@ def on_run(n_clicks, sid):
                     accent=True),
         metric_card("Skeleton CSVs", str(report.n_skeleton_csvs),
                     accent=True),
+        metric_card("Prior cleared", str(report.n_cleared)),
         metric_card("Wall time",     f"{dt:.1f} s"),
     ], style={"display": "grid",
-              "gridTemplateColumns": "repeat(5, 1fr)",
+              "gridTemplateColumns": "repeat(6, 1fr)",
               "gap": "12px", "marginTop": "12px"})
 
     skipped_msg = (
