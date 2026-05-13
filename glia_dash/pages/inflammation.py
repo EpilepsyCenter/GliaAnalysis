@@ -239,10 +239,20 @@ def layout(sid: str | None) -> html.Div:
             ], style={"marginRight": "20px"}),
             dbc.Button("Train + apply", id="ii-train",
                        className="btn-ned-primary"),
+            # "Apply only" is enabled when a model is already saved on
+            # the project — re-runs the existing axis on the current
+            # features.csv (handy after re-extraction or metadata
+            # edits, where retraining would just rediscover the same
+            # axis and waste time).
+            dbc.Button("Apply trained model",
+                       id="ii-apply",
+                       className="btn-ned-secondary",
+                       disabled=(saved_model is None),
+                       style={"marginLeft": "8px"}),
             html.Span(
-                "Training also applies the score to every cell and "
-                "writes it into features.csv, so Explore and Stats see "
-                "'inflammation_index' immediately.",
+                "Train selects features and fits a fresh axis. "
+                "Apply re-uses the saved axis (no retraining) — useful "
+                "after re-extracting features or editing metadata.",
                 style={"fontSize": "0.75rem",
                        "color": "var(--ned-text-muted)",
                        "marginLeft": "12px"},
@@ -302,8 +312,8 @@ def populate_groups(treatment_col, sid):
 
 
 @callback(
-    Output("ii-output", "children"),
-    Output("ii-train-tick", "data"),
+    Output("ii-output", "children", allow_duplicate=True),
+    Output("ii-train-tick", "data", allow_duplicate=True),
     Input("ii-train", "n_clicks"),
     State("ii-treatment-col", "value"),
     State("ii-control-group", "value"),
@@ -378,6 +388,71 @@ def on_train(n_clicks, treatment_col, ctrl, comp, max_size, theme, sid):
             f"✓ Trained and applied to {len(scored):,} cells "
             f"(AUC = {model.train_auc:.3f}). 'inflammation_index' is "
             f"now in Explore / Stats / features.csv.",
+            variant="success",
+        ),
+    ), n_clicks
+
+
+@callback(
+    Output("ii-output", "children", allow_duplicate=True),
+    Output("ii-train-tick", "data", allow_duplicate=True),
+    Input("ii-apply", "n_clicks"),
+    State("theme-store", "data"),
+    State("session-id", "data"),
+    prevent_initial_call=True,
+)
+def on_apply(n_clicks, theme, sid):
+    """Re-apply the saved model without retraining.
+
+    Reads inflammation_model from project state, scores the current
+    in-memory dataframe, writes features.csv. No greedy selection,
+    no axis re-orientation — uses whatever was learned at training
+    time. Errors loudly if the saved model references features that
+    no longer exist (rare but possible after a re-extract with a
+    different feature pipeline).
+    """
+    if not n_clicks:
+        return no_update, no_update
+    state = server_state.get_session(sid)
+    df = state.features_df
+    if df is None:
+        return alert("No features in memory.", variant="warning"), no_update
+
+    model_dict = state.extra.get("inflammation_model")
+    if not isinstance(model_dict, dict):
+        return alert("No trained model on file — hit 'Train + apply' "
+                     "first.", variant="warning"), no_update
+    try:
+        model = InflammationModel.from_dict(model_dict)
+    except Exception as e:
+        return alert(f"Saved model is invalid: {e}",
+                     variant="danger"), no_update
+
+    missing = [f for f in model.features if f not in df.columns]
+    if missing:
+        return alert(
+            f"The saved model needs {len(missing)} feature(s) that "
+            f"aren't in the current features table: "
+            f"{', '.join(missing[:6])}"
+            f"{'…' if len(missing) > 6 else ''}. Re-extract features "
+            "or retrain.",
+            variant="danger"), no_update
+
+    try:
+        scored = ii_apply(df, model)
+        state.features_df = scored
+        save_features_df(state.project_dir, scored)
+    except Exception as e:
+        return alert(f"Applying the model failed: {e}",
+                     variant="danger"), no_update
+
+    return _render_results(
+        scored, model, model.treatment_col, dt=None,
+        theme=theme, state=state,
+        extra_top=alert(
+            f"✓ Re-applied saved model (AUC = {model.train_auc:.3f}) "
+            f"to {len(scored):,} cells. 'inflammation_index' updated "
+            "in Explore / Stats / features.csv.",
             variant="success",
         ),
     ), n_clicks

@@ -21,7 +21,9 @@ _DEFAULT_DIST_FEATURES = [
     "Area", "Perimeter", "Circularity",
     "# of branches", "# of end point voxels", "Maximum branch length",
 ]
-_METADATA_COLS = ("ID", "roi_tag", "cell_index")
+# Columns to hide from the grouping pickers. roi_tag stays available
+# (Group by / Split by) so users can dissect Treatment × ROI effects.
+_GROUPING_EXCLUDE = ("ID", "cell_index")
 
 
 def _feature_columns(df: pd.DataFrame, mode: str = "microglia") -> list[str]:
@@ -45,7 +47,7 @@ def _feature_columns(df: pd.DataFrame, mode: str = "microglia") -> list[str]:
 def _grouping_options(df: pd.DataFrame, mode: str = "microglia") -> list[dict]:
     """Possible categorical columns to group distributions by."""
     feats = set(_feature_columns(df, mode))
-    drop = set(_METADATA_COLS) | feats
+    drop = set(_GROUPING_EXCLUDE) | feats
     cats = [c for c in df.columns
             if c not in drop and df[c].dtype.kind not in "fi"]
     return [{"label": "(no grouping)", "value": ""}] + [
@@ -86,6 +88,17 @@ def layout(sid: str | None) -> html.Div:
                          if len(grouping_opts) > 1 else "")
     else:
         default_group = saved_group
+
+    saved_split = state.extra.get("explore_split")
+    if saved_split is None or saved_split not in valid_group_values:
+        # Auto-suggest roi_tag as the secondary when it's available and
+        # not already the primary. Users can clear it back to "(none)".
+        default_split = ("roi_tag"
+                         if "roi_tag" in valid_group_values
+                         and "roi_tag" != default_group
+                         else "")
+    else:
+        default_split = saved_split if saved_split != default_group else ""
 
     saved_features = state.extra.get("explore_features")
     if isinstance(saved_features, list):
@@ -144,7 +157,20 @@ def layout(sid: str | None) -> html.Div:
                 dcc.Dropdown(id="explore-group",
                              options=grouping_opts,
                              value=default_group, clearable=False,
-                             style={"width": "200px"}),
+                             style={"width": "180px"}),
+            ], style={"marginRight": "16px"}),
+
+            html.Div([
+                html.Label("Split by",
+                           style={"fontSize": "0.72rem",
+                                  "color": "var(--ned-text-muted)",
+                                  "textTransform": "uppercase",
+                                  "letterSpacing": "0.5px"}),
+                dcc.Dropdown(id="explore-split",
+                             options=grouping_opts,
+                             value=default_split, clearable=True,
+                             placeholder="(none)",
+                             style={"width": "180px"}),
             ], style={"marginRight": "32px"}),
 
             html.Div([
@@ -219,11 +245,20 @@ def _theme_palette(theme: str) -> dict:
 
 def _build_distributions(df: pd.DataFrame, features: list[str],
                          group: str, theme: str,
-                         show_points: bool = True) -> go.Figure:
+                         show_points: bool = True,
+                         split: str = "",
+                         animal_col: str = "") -> go.Figure:
     """Bar + SEM per (feature × group), publication-style.
 
-    One subplot per feature, one bar per group, error bars from SEM.
-    Optionally overlays individual cell values jittered around each bar.
+    One subplot per feature. With one factor: one bar per primary group.
+    With two factors: bars cluster by ``split`` (x-position) and color
+    by ``group`` (legend shows primary levels once). Error bars are SEM.
+
+    Point overlay:
+      - single factor: per-cell jitter (legacy behavior).
+      - two factors: aggregate to (animal × split × group) means first,
+        so the cloud is per-animal — avoids pseudoreplicating cells.
+        Falls back to per-cell if ``animal_col`` is empty.
     """
     if not features:
         return go.Figure()
@@ -233,38 +268,170 @@ def _build_distributions(df: pd.DataFrame, features: list[str],
     fig = make_subplots(rows=rows, cols=cols, subplot_titles=features,
                         vertical_spacing=0.16, horizontal_spacing=0.07)
 
-    if group and group in df.columns:
-        groups = sorted(pd.Series(df[group]).fillna("(missing)").unique(),
-                        key=lambda x: str(x))
+    has_primary = bool(group) and group in df.columns
+    has_split = (bool(split) and split in df.columns
+                 and split != group and split != animal_col)
+
+    if has_primary:
+        primaries = sorted(
+            pd.Series(df[group]).fillna("(missing)").unique(),
+            key=lambda x: str(x))
     else:
-        groups = [None]
-    group_names = ["all" if g is None else str(g) for g in groups]
+        primaries = [None]
+    primary_names = ["all" if g is None else str(g) for g in primaries]
     colors = [p["colorway"][i % len(p["colorway"])]
-              for i in range(len(group_names))]
+              for i in range(len(primary_names))]
+
     rng = np.random.default_rng(0)
-    positions = list(range(len(group_names)))
+
+    if has_split:
+        splits = sorted(
+            pd.Series(df[split]).fillna("(missing)").unique(),
+            key=lambda x: str(x))
+        split_names = [str(s) for s in splits]
+        split_positions = list(range(len(split_names)))
+        n_primary = max(1, len(primaries))
+        bar_w = 0.8 / n_primary
+        primary_offsets = [
+            (i - (n_primary - 1) / 2) * bar_w for i in range(n_primary)
+        ]
+    legend_seen: set[str] = set()
+
+    # Per-animal aggregation key (deduped) — used only when has_split
+    # so the SEM is animal-level, not cell-level.
+    use_agg = (has_split and bool(animal_col)
+               and animal_col in df.columns
+               and animal_col not in (group, split))
 
     for i, feat in enumerate(features):
         r, c = i // cols + 1, i % cols + 1
-        means: list[float] = []
-        sems: list[float] = []
-        ns: list[int] = []
-        per_group_values: list[np.ndarray] = []
-        for g in groups:
-            sub_g = df if g is None else df[df[group].fillna("(missing)") == g]
-            v = sub_g[feat].dropna().to_numpy()
-            per_group_values.append(v)
-            if len(v) > 0:
-                means.append(float(v.mean()))
-                sems.append(float(v.std(ddof=1) / np.sqrt(len(v)))
-                            if len(v) > 1 else 0.0)
+
+        # ── Two-factor case: clustered bars (primary = color, split = x).
+        if has_split:
+            agg_df = None
+            if use_agg:
+                keys = [animal_col]
+                if has_primary and group not in keys:
+                    keys.append(group)
+                if split not in keys:
+                    keys.append(split)
+                agg_df = (df[[*keys, feat]]
+                          .dropna(subset=[feat])
+                          .groupby(keys, dropna=False)[feat]
+                          .mean()
+                          .reset_index())
+
+            for pi, prim in enumerate(primaries):
+                means, sems, ns = [], [], []
+                per_bar_values = []
+                for sv in splits:
+                    if agg_df is not None:
+                        sub = agg_df
+                        if has_primary:
+                            sub = sub[sub[group].fillna("(missing)")
+                                      == prim]
+                        sub = sub[sub[split].fillna("(missing)") == sv]
+                        v = sub[feat].to_numpy()
+                    else:
+                        sub = df
+                        if has_primary:
+                            sub = sub[sub[group].fillna("(missing)")
+                                      == prim]
+                        sub = sub[sub[split].fillna("(missing)") == sv]
+                        v = sub[feat].dropna().to_numpy()
+                    per_bar_values.append(v)
+                    if len(v):
+                        m = float(np.mean(v))
+                        s = (float(np.std(v, ddof=1) / np.sqrt(len(v)))
+                             if len(v) > 1 else 0.0)
+                        means.append(m if np.isfinite(m) else 0.0)
+                        sems.append(s if np.isfinite(s) else 0.0)
+                        ns.append(int(len(v)))
+                    else:
+                        means.append(0.0)
+                        sems.append(0.0)
+                        ns.append(0)
+
+                xs = [sp + primary_offsets[pi] for sp in split_positions]
+                legend_key = primary_names[pi]
+                show_in_legend = (has_primary
+                                  and legend_key not in legend_seen)
+                if show_in_legend:
+                    legend_seen.add(legend_key)
+                unit_label = ("animals"
+                              if agg_df is not None else "cells")
+
+                fig.add_trace(go.Bar(
+                    x=xs, y=means,
+                    error_y=dict(type="data", array=sems, visible=True,
+                                 color=p["fg"], thickness=1.4, width=5),
+                    marker=dict(color=colors[pi],
+                                line=dict(color=p["fg"], width=0.5)),
+                    name=legend_key,
+                    legendgroup=legend_key,
+                    showlegend=bool(show_in_legend),
+                    customdata=[(legend_key, sn, n, unit_label)
+                                for sn, n in zip(split_names, ns)],
+                    hovertemplate=(
+                        "<b>%{customdata[0]}</b> · %{customdata[1]}"
+                        "<br>mean = %{y:.3g}"
+                        "<br>n = %{customdata[2]} %{customdata[3]}"
+                        "<extra></extra>"),
+                    width=bar_w * 0.92,
+                ), row=r, col=c)
+
+                if show_points:
+                    for sj, vals in enumerate(per_bar_values):
+                        if len(vals) == 0:
+                            continue
+                        # Drop non-finite values before scatter — plotly
+                        # tolerates NaN but `inf` ruins the axis range.
+                        vals = vals[np.isfinite(vals)]
+                        if len(vals) == 0:
+                            continue
+                        jitter = rng.normal(0, bar_w * 0.18, len(vals))
+                        fig.add_trace(go.Scatter(
+                            x=[xs[sj] + j for j in jitter],
+                            y=vals,
+                            mode="markers",
+                            marker=dict(color=p["fg"], size=3,
+                                        opacity=0.32,
+                                        line=dict(width=0)),
+                            showlegend=False,
+                            hoverinfo="skip",
+                        ), row=r, col=c)
+
+            fig.update_xaxes(tickmode="array",
+                             tickvals=split_positions,
+                             ticktext=split_names,
+                             range=[-0.6, len(split_positions) - 0.4],
+                             row=r, col=c)
+            continue
+
+        # ── Single-factor case: legacy layout — one bar per primary
+        # level, multi-color via per-bar marker.color list, primary
+        # names as x-axis ticks.
+        positions = list(range(len(primaries)))
+        means, sems, ns = [], [], []
+        per_bar_values = []
+        for prim in primaries:
+            if has_primary:
+                sub = df[df[group].fillna("(missing)") == prim]
+            else:
+                sub = df
+            v = sub[feat].dropna().to_numpy()
+            per_bar_values.append(v)
+            if len(v):
+                m = float(np.mean(v))
+                s = (float(np.std(v, ddof=1) / np.sqrt(len(v)))
+                     if len(v) > 1 else 0.0)
+                means.append(m if np.isfinite(m) else 0.0)
+                sems.append(s if np.isfinite(s) else 0.0)
                 ns.append(int(len(v)))
             else:
                 means.append(0.0)
                 sems.append(0.0)
                 ns.append(0)
-
-        # Bars on a numeric axis so the jittered scatter overlay aligns.
         fig.add_trace(go.Bar(
             x=positions, y=means,
             error_y=dict(type="data", array=sems, visible=True,
@@ -272,15 +439,18 @@ def _build_distributions(df: pd.DataFrame, features: list[str],
             marker=dict(color=colors,
                         line=dict(color=p["fg"], width=0.5)),
             showlegend=False,
-            customdata=list(zip(group_names, ns)),
+            customdata=list(zip(primary_names, ns)),
             hovertemplate=("<b>%{customdata[0]}</b><br>"
-                           "mean = %{y:.3g} ± %{error_y.array:.2g} SEM<br>"
+                           "mean = %{y:.3g}<br>"
                            "n = %{customdata[1]}<extra></extra>"),
             width=0.65,
         ), row=r, col=c)
 
         if show_points:
-            for gi, vals in enumerate(per_group_values):
+            for gi, vals in enumerate(per_bar_values):
+                if len(vals) == 0:
+                    continue
+                vals = vals[np.isfinite(vals)]
                 if len(vals) == 0:
                     continue
                 jitter = rng.normal(0, 0.08, len(vals))
@@ -295,16 +465,21 @@ def _build_distributions(df: pd.DataFrame, features: list[str],
                 ), row=r, col=c)
 
         fig.update_xaxes(tickmode="array", tickvals=positions,
-                         ticktext=group_names,
-                         range=[-0.6, len(group_names) - 0.4],
+                         ticktext=primary_names,
+                         range=[-0.6, len(primary_names) - 0.4],
                          row=r, col=c)
 
     fig.update_layout(
         margin=dict(l=48, r=20, t=36, b=28),
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
         font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif", size=11),
-        bargap=0.30,
-        showlegend=False,
+        bargap=0.18 if has_split else 0.30,
+        bargroupgap=0.06,
+        barmode="overlay",  # bars already positioned manually
+        showlegend=bool(has_primary and has_split),
+        legend=dict(orientation="h", yanchor="bottom", y=1.04,
+                    xanchor="left", x=0,
+                    font=dict(size=10)),
     )
     fig.update_xaxes(showline=True, linecolor=p["grid"],
                      gridcolor=p["grid"])
@@ -320,9 +495,13 @@ def _build_correlations(df: pd.DataFrame, theme: str,
     if len(feats) < 2:
         return go.Figure()
     sub = df[feats].copy()
+    # Replace ±inf with NaN before .std() — otherwise the variance is
+    # ill-defined and pandas emits a RuntimeWarning.
+    sub = sub.replace([np.inf, -np.inf], np.nan)
     # Drop fully-NaN / zero-variance columns so Spearman doesn't return NaN
     # rows that would blank out the entire heatmap.
-    valid = sub.std(ddof=0).fillna(0) > 0
+    std = sub.std(ddof=0)
+    valid = std.fillna(0) > 0
     sub = sub.loc[:, valid].dropna()
     feats = list(sub.columns)
     if sub.shape[1] < 2 or len(sub) < 3:
@@ -358,24 +537,32 @@ def _build_correlations(df: pd.DataFrame, theme: str,
     Output("explore-corr", "figure"),
     Input("explore-transform", "value"),
     Input("explore-group", "value"),
+    Input("explore-split", "value"),
     Input("explore-features", "value"),
     Input("explore-show-points", "value"),
     Input("theme-store", "data"),
     State("session-id", "data"),
     prevent_initial_call=False,
 )
-def update_plots(transform, group, features, show_points, theme, sid):
+def update_plots(transform, group, split, features, show_points, theme, sid):
     state = server_state.get_session(sid)
     df_raw = state.features_df
     if df_raw is None or len(df_raw) == 0:
         return go.Figure(), go.Figure()
     state.transform = transform or "none"
 
+    # Drop split if it duplicates the primary group — same factor on
+    # both axes is meaningless and would draw N identical bars per
+    # cluster.
+    if split and split == group:
+        split = ""
+
     # Mirror the user's current selections so re-rendering this page
     # (tab switch, refresh, folder reopen) restores them. Stored on
     # state.extra because they're UI preferences, not analysis params.
     state.extra["explore_features"] = list(features or [])
     state.extra["explore_group"] = group or ""
+    state.extra["explore_split"] = split or ""
     state.extra["explore_show_points"] = bool(show_points)
     try:
         from glia.settings import save_project_settings
@@ -384,16 +571,50 @@ def update_plots(transform, group, features, show_points, theme, sid):
         pass
 
     feats_all = _feature_columns(df_raw, getattr(state, "mode", "microglia"))
+    # Replace ±inf with NaN once, up front. Several morphology features
+    # (Circularity, Average branch length, etc.) can produce inf when a
+    # denominator approaches zero, and any downstream .std() / .mean()
+    # on those values both warns and corrupts the resulting figure.
+    df_clean = df_raw.copy()
+    df_clean[feats_all] = (df_clean[feats_all]
+                           .replace([np.inf, -np.inf], np.nan))
+
     if transform and transform != "none":
-        df_dist = apply_transform(df_raw, feats_all, transform)
+        df_dist = apply_transform(df_clean, feats_all, transform)
     else:
-        df_dist = df_raw
+        df_dist = df_clean
     # Spearman is rank-based, so transforms don't change the correlation
-    # matrix. Always use the raw frame — avoids zero-variance columns
-    # blanking the heatmap after a log/z-score pass.
-    return (
-        _build_distributions(df_dist, list(features or []), group or "",
-                             theme, show_points=bool(show_points)),
-        _build_correlations(df_raw, theme,
-                            mode=getattr(state, "mode", "microglia")),
-    )
+    # matrix. Always use the cleaned frame.
+    try:
+        dist_fig = _build_distributions(
+            df_dist, list(features or []), group or "",
+            theme, show_points=bool(show_points),
+            split=split or "",
+            animal_col=getattr(state, "animal_id_col", "") or "",
+        )
+    except Exception as e:
+        dist_fig = _error_figure(theme,
+                                 f"Distribution plot failed: {e}")
+    try:
+        corr_fig = _build_correlations(
+            df_clean, theme,
+            mode=getattr(state, "mode", "microglia"),
+        )
+    except Exception as e:
+        corr_fig = _error_figure(theme,
+                                 f"Correlation plot failed: {e}")
+    return dist_fig, corr_fig
+
+
+def _error_figure(theme: str, msg: str) -> go.Figure:
+    """Return a non-crashing placeholder figure with the error inline."""
+    p = _theme_palette(theme)
+    fig = go.Figure()
+    fig.add_annotation(text=msg, x=0.5, y=0.5, showarrow=False,
+                       font=dict(color=p["fg"], size=12),
+                       xref="paper", yref="paper")
+    fig.update_layout(paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
+                      xaxis=dict(visible=False),
+                      yaxis=dict(visible=False),
+                      margin=dict(l=20, r=20, t=20, b=20))
+    return fig

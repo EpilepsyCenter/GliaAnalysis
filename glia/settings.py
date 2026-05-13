@@ -64,6 +64,7 @@ _PROJECT_EXTRA_FIELDS = (
     # Explore tab selections
     "explore_features",
     "explore_group",
+    "explore_split",
     "explore_show_points",
     # Stats tab selections (animal_id_col + factor_cols already on state)
     "stats_features",
