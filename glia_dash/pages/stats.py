@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from dash import (
-    Input, Output, State, callback, dash_table, dcc, html, no_update,
+    Input, Output, State, callback, ctx, dash_table, dcc, html, no_update,
 )
 import dash_bootstrap_components as dbc
 
@@ -350,6 +350,37 @@ def layout(sid: str | None) -> html.Div:
         ], style={"display": "grid",
                   "gridTemplateColumns": "repeat(4, 1fr)",
                   "gap": "12px", "marginBottom": "16px"}),
+
+        # Quick-fill presets. Picks animal/factors/method/padjust in
+        # one click. ROI-aware LMM auto-triggers the mixed-effects
+        # dispatch by including roi_tag in factors.
+        html.Div([
+            dbc.DropdownMenu(
+                label="Presets",
+                color="secondary",
+                size="sm",
+                children=[
+                    dbc.DropdownMenuItem(
+                        "Animal-level ANOVA + Holm",
+                        id="stats-preset-animal-anova",
+                        n_clicks=0,
+                    ),
+                    dbc.DropdownMenuItem(
+                        "ROI-aware LMM (Treatment × ROI)",
+                        id="stats-preset-roi-lmm",
+                        n_clicks=0,
+                    ),
+                ],
+            ),
+            html.Span(
+                "Fills Animal / Factors / Method / Correction in one "
+                "click. You still hit Run.",
+                style={"marginLeft": "10px",
+                       "fontSize": "0.78rem",
+                       "color": "var(--ned-text-muted)"},
+            ),
+        ], style={"display": "flex", "alignItems": "center",
+                  "marginBottom": "10px"}),
 
         html.Div([
             html.Div([
@@ -1393,3 +1424,49 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
 
         cluster_block,
     ])
+
+
+@callback(
+    Output("stats-animal-id", "value", allow_duplicate=True),
+    Output("stats-factors", "value", allow_duplicate=True),
+    Output("stats-method", "value", allow_duplicate=True),
+    Output("stats-padjust", "value", allow_duplicate=True),
+    Output("stats-aggregate", "value", allow_duplicate=True),
+    Output("stats-features", "value", allow_duplicate=True),
+    Input("stats-preset-animal-anova", "n_clicks"),
+    Input("stats-preset-roi-lmm", "n_clicks"),
+    State("session-id", "data"),
+    prevent_initial_call=True,
+)
+def apply_stats_preset(_n1, _n2, sid):
+    """Fill all controls from a preset. Each preset is a sensible
+    baseline; users still tweak from there and hit Run. Outputs stay
+    at no_update when their target column isn't present in the
+    current features table (e.g. roi_tag missing in a flat dataset).
+    """
+    state = server_state.get_session(sid)
+    df = state.features_df
+    if df is None or len(df) == 0:
+        return (no_update,) * 6
+    feats = _feature_columns(df, getattr(state, "mode", "microglia"))
+    core = [c for c in _DEFAULT_FEATURES if c in feats] or feats[:4]
+
+    # Pick the animal-ID column: respect a user-set state value if it
+    # still exists in the frame, otherwise try the canonical "Animal".
+    animal_val = (state.animal_id_col
+                  if state.animal_id_col in df.columns
+                  else ("Animal" if "Animal" in df.columns
+                        else no_update))
+
+    pid = ctx.triggered_id
+    if pid == "stats-preset-animal-anova":
+        factors = ["Treatment"] if "Treatment" in df.columns else []
+        return animal_val, factors, "anova", "holm", True, core
+    if pid == "stats-preset-roi-lmm":
+        factors = []
+        if "Treatment" in df.columns:
+            factors.append("Treatment")
+        if "roi_tag" in df.columns:
+            factors.append("roi_tag")
+        return animal_val, factors, "anova", "holm", True, core
+    return (no_update,) * 6

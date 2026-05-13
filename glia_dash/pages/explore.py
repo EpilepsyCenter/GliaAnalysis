@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from dash import Input, Output, State, callback, dcc, html, no_update
+from dash import Input, Output, State, callback, ctx, dcc, html, no_update
 import dash_bootstrap_components as dbc
 from plotly.subplots import make_subplots
 from scipy.stats import spearmanr
@@ -133,6 +133,36 @@ def layout(sid: str | None) -> html.Div:
         ], style={"display": "grid",
                   "gridTemplateColumns": "repeat(3, 1fr)",
                   "gap": "12px", "marginBottom": "16px"}),
+
+        # Quick-fill presets. Pick one to populate every control below
+        # in a single click. Useful for the most common views; users
+        # can still tweak individual selections afterwards.
+        html.Div([
+            dbc.DropdownMenu(
+                label="Presets",
+                color="secondary",
+                size="sm",
+                children=[
+                    dbc.DropdownMenuItem(
+                        "Treatment overview",
+                        id="explore-preset-tx-overview",
+                        n_clicks=0,
+                    ),
+                    dbc.DropdownMenuItem(
+                        "Treatment × ROI",
+                        id="explore-preset-tx-roi",
+                        n_clicks=0,
+                    ),
+                ],
+            ),
+            html.Span(
+                "Fills Group / Split / Features in one click.",
+                style={"marginLeft": "10px",
+                       "fontSize": "0.78rem",
+                       "color": "var(--ned-text-muted)"},
+            ),
+        ], style={"display": "flex", "alignItems": "center",
+                  "marginBottom": "10px"}),
 
         html.Div([
             html.Div([
@@ -618,3 +648,41 @@ def _error_figure(theme: str, msg: str) -> go.Figure:
                       yaxis=dict(visible=False),
                       margin=dict(l=20, r=20, t=20, b=20))
     return fig
+
+
+@callback(
+    Output("explore-group", "value", allow_duplicate=True),
+    Output("explore-split", "value", allow_duplicate=True),
+    Output("explore-features", "value", allow_duplicate=True),
+    Output("explore-show-points", "value", allow_duplicate=True),
+    Input("explore-preset-tx-overview", "n_clicks"),
+    Input("explore-preset-tx-roi", "n_clicks"),
+    State("session-id", "data"),
+    prevent_initial_call=True,
+)
+def apply_explore_preset(_n1, _n2, sid):
+    """Fill all controls from a preset. Each preset assumes Treatment
+    and roi_tag are the canonical column names; if either is absent,
+    that specific output stays unchanged (no_update) so the user
+    still sees a sensible partial fill."""
+    state = server_state.get_session(sid)
+    df = state.features_df
+    if df is None or len(df) == 0:
+        return no_update, no_update, no_update, no_update
+    mode = getattr(state, "mode", "microglia")
+    feats = _feature_columns(df, mode)
+    core = [c for c in _DEFAULT_DIST_FEATURES if c in feats]
+    if not core:
+        core = feats[:6]
+    has_tx = "Treatment" in df.columns
+    has_roi = "roi_tag" in df.columns
+    pid = ctx.triggered_id
+    if pid == "explore-preset-tx-overview":
+        return ("Treatment" if has_tx else no_update), "", core, True
+    if pid == "explore-preset-tx-roi":
+        return (
+            ("Treatment" if has_tx else no_update),
+            ("roi_tag" if has_roi else ""),
+            core, True,
+        )
+    return no_update, no_update, no_update, no_update
