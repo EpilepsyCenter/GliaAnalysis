@@ -58,6 +58,22 @@ ALL_FEATURES = (
     FRACLAC_FEATURES + SKELETON_FEATURES + SOMA_FEATURES + SHOLL_FEATURES
 )  # 36 total
 
+# Astrocyte / GFAP field-level metrics. One row per (image, ROI) — the
+# unit of analysis for the astrocyte path. Reported in pixels (or
+# pixel-derived units); the user can convert to microns downstream via
+# the image's pixel size.
+ASTROCYTE_FEATURES = [
+    "GFAP area (px²)",
+    "GFAP area fraction",
+    "Skeleton length total (px)",
+    "# of branches",                 # field-level analogue
+    "# of junctions",
+    "Mean branch length (px)",
+    "Branch density (per 1000 px²)",
+    "Mean intensity in mask",
+    "Soma count",
+]
+
 # Derived numeric per-cell columns (added by analysis steps, not by the
 # raw morphology extraction). Pages that surface "all per-cell metrics"
 # should treat these as features so Explore / Stats see them

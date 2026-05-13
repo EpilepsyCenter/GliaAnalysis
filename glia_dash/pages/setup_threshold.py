@@ -74,12 +74,13 @@ def _load_image(path: str) -> np.ndarray:
     return _IMAGE_CACHE[path][1]
 
 
-def _list_project_images(folder: str) -> list[str]:
+def _list_project_images(folder: str,
+                         mode: str = "microglia") -> list[str]:
     """Return the prepared 8-bit TIFFs (Prepare step output) for the
     Threshold preview; legacy fall-through to top-level TIFFs."""
     if not folder or not Path(folder).is_dir():
         return []
-    prep = prepared_dir(folder)
+    prep = prepared_dir(folder, mode)
     if prep.is_dir():
         prepared = sorted(
             str(p) for p in prep.iterdir()
@@ -93,9 +94,10 @@ def _list_project_images(folder: str) -> list[str]:
     )
 
 
-def _render_image_chips(folder: str, current_path: str) -> list:
+def _render_image_chips(folder: str, current_path: str,
+                        mode: str = "microglia") -> list:
     """Row of clickable filename chips for every TIFF in the project folder."""
-    images = _list_project_images(folder)
+    images = _list_project_images(folder, mode)
     if not images:
         return [html.Span(
             "Load a project folder from the sidebar to scrub through images.",
@@ -136,10 +138,11 @@ def threshold_layout(sid: str | None) -> html.Div:
     initial_methods = (methods_global if state.threshold_kind == "global"
                        else methods_local)
 
+    mode = getattr(state, "mode", "microglia") or "microglia"
     preview_path = state.extra.get("preview_image_path", "")
     # If no preview picked yet but the project has images, default to the
     # first one — the chip row will start on a useful image.
-    project_images = _list_project_images(state.project_dir)
+    project_images = _list_project_images(state.project_dir, mode)
     if not preview_path and project_images:
         preview_path = project_images[0]
         state.extra["preview_image_path"] = preview_path
@@ -164,7 +167,7 @@ def threshold_layout(sid: str | None) -> html.Div:
         # currently-previewed image is highlighted with .selected.
         html.Div(id="setup-image-chip-row",
                  children=_render_image_chips(state.project_dir,
-                                              preview_path),
+                                              preview_path, mode),
                  style={"marginBottom": "16px",
                         "display": "flex",
                         "flexWrap": "wrap",
@@ -493,8 +496,9 @@ def on_image_chip_click(all_n_clicks, sid):
 )
 def refresh_chip_active(path, sid):
     """Re-render the chip row so the active filename is highlighted."""
-    folder = server_state.get_session(sid).project_dir
-    return _render_image_chips(folder, path or "")
+    state = server_state.get_session(sid)
+    mode = getattr(state, "mode", "microglia") or "microglia"
+    return _render_image_chips(state.project_dir, path or "", mode)
 
 
 _PREVIEW_OUTPUTS = (

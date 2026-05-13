@@ -34,7 +34,7 @@ import plotly.graph_objects as go
 from dash import Input, Output, State, callback, dcc, html, no_update
 import dash_bootstrap_components as dbc
 
-from glia.config import ALL_FEATURES
+from glia.config import ALL_FEATURES, ASTROCYTE_FEATURES
 from glia.features import save_features_df
 from glia.inflammation_index import (
     DEFAULT_MAX_SUBSET_SIZE,
@@ -82,9 +82,16 @@ def _metadata_candidates(df: pd.DataFrame) -> list[str]:
     return out
 
 
-def _candidate_features(df: pd.DataFrame) -> list[str]:
-    """The morphology features available for the inflammation axis."""
-    return [c for c in ALL_FEATURES if c in df.columns
+def _candidate_features(df: pd.DataFrame, mode: str = "microglia") -> list[str]:
+    """The morphology features available for the inflammation axis.
+
+    Microglia mode uses the 36 per-cell features; astrocyte mode uses
+    the 9 per-(image, ROI) astrocyte network metrics. Either way we
+    only keep columns actually present in ``df`` and that are numeric.
+    """
+    pool = (ASTROCYTE_FEATURES if (mode or "").lower() == "astrocyte"
+            else ALL_FEATURES)
+    return [c for c in pool if c in df.columns
             and df[c].dtype.kind in "fi"]
 
 
@@ -105,7 +112,7 @@ def layout(sid: str | None) -> html.Div:
         ])
 
     meta_cols = _metadata_candidates(df)
-    feats = _candidate_features(df)
+    feats = _candidate_features(df, mode=getattr(state, "mode", "microglia"))
     if not meta_cols:
         return html.Div([
             html.H4("Inflammation Index", style={"marginBottom": "16px"}),
@@ -320,7 +327,7 @@ def on_train(n_clicks, treatment_col, ctrl, comp, max_size, theme, sid):
         return alert("Control and comparator must differ.",
                      variant="warning"), no_update
 
-    feats = _candidate_features(df)
+    feats = _candidate_features(df, mode=getattr(state, "mode", "microglia"))
     if not feats:
         return alert("No numeric morphology features in the dataframe.",
                      variant="danger"), no_update

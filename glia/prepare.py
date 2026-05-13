@@ -16,8 +16,25 @@ from glia.io import load_image_2d_uint8, read_image_meta
 from glia.vsi_convert import VSI_EXTENSIONS, resolve_source
 
 
-_PREPARED_SUBDIR = Path("_gliaanalysis") / "Prepared"
-_PREPARED_DAPI_SUBDIR = Path("_gliaanalysis") / "Prepared_dapi"
+_PREPARED_NAME = "Prepared"
+_PREPARED_DAPI_NAME = "Prepared_dapi"
+_GLIA_BASE = "_gliaanalysis"
+_ASTROCYTE_SUBDIR = "astrocyte"
+
+
+def glia_dir(project_dir: str, mode: str = "microglia") -> Path:
+    """Mode-aware base output dir under the project.
+
+    Microglia keeps the historical ``_gliaanalysis/`` layout. Astrocyte
+    nests under ``_gliaanalysis/astrocyte/`` so its Prepared,
+    ThresholdedImages, etc. don't overwrite the microglia outputs when
+    the user switches modes and re-runs Prepare with a different
+    channel.
+    """
+    base = Path(project_dir) / _GLIA_BASE
+    if (mode or "microglia") == "astrocyte":
+        return base / _ASTROCYTE_SUBDIR
+    return base
 
 # Source extensions the Prepare step is willing to attempt. bioio's plugin
 # selection covers everything in this list except .vsi, which is routed
@@ -33,18 +50,18 @@ SOURCE_EXTENSIONS = (
 )
 
 
-def prepared_dir(project_dir: str) -> Path:
-    return Path(project_dir) / _PREPARED_SUBDIR
+def prepared_dir(project_dir: str, mode: str = "microglia") -> Path:
+    return glia_dir(project_dir, mode) / _PREPARED_NAME
 
 
-def prepared_dapi_dir(project_dir: str) -> Path:
+def prepared_dapi_dir(project_dir: str, mode: str = "microglia") -> Path:
     """Parallel directory of prepared DAPI / nucleus-channel TIFFs.
 
     Mirrors the layout of ``prepared_dir`` so the segment step can match
     DAPI to cell-channel images by stem. Only written when the project
     opts into DAPI-seeded soma centering.
     """
-    return Path(project_dir) / _PREPARED_DAPI_SUBDIR
+    return glia_dir(project_dir, mode) / _PREPARED_DAPI_NAME
 
 
 def list_source_files(project_dir: str) -> list[Path]:
@@ -61,15 +78,16 @@ def list_source_files(project_dir: str) -> list[Path]:
     return out
 
 
-def output_path_for(project_dir: str, source: Path) -> Path:
+def output_path_for(project_dir: str, source: Path,
+                    mode: str = "microglia") -> Path:
     """Where the prepared TIFF lands for a given source file."""
-    out = prepared_dir(project_dir) / (source.stem + ".tif")
-    return out
+    return prepared_dir(project_dir, mode) / (source.stem + ".tif")
 
 
-def output_path_for_dapi(project_dir: str, source: Path) -> Path:
+def output_path_for_dapi(project_dir: str, source: Path,
+                         mode: str = "microglia") -> Path:
     """Where the prepared DAPI TIFF lands for a given source file."""
-    return prepared_dapi_dir(project_dir) / (source.stem + ".tif")
+    return prepared_dapi_dir(project_dir, mode) / (source.stem + ".tif")
 
 
 @dataclass
@@ -112,6 +130,7 @@ def prepare_dapi_directory(
     dapi_per_image: dict,
     z_projection: str = "max",
     included_names: set[str] | None = None,
+    mode: str = "microglia",
 ) -> PrepareReport:
     """Prepare DAPI / nucleus channel into ``Prepared_dapi/``.
 
@@ -124,7 +143,7 @@ def prepare_dapi_directory(
     """
     rep = PrepareReport()
     sources = list_source_files(project_dir)
-    out_dir = prepared_dapi_dir(project_dir)
+    out_dir = prepared_dapi_dir(project_dir, mode)
     out_dir.mkdir(parents=True, exist_ok=True)
     for src in sources:
         if included_names is not None and src.name not in included_names:
@@ -140,7 +159,8 @@ def prepare_dapi_directory(
             continue
         z = str(cfg.get("z_projection", z_projection))
         try:
-            prepare_one(src, output_path_for_dapi(project_dir, src),
+            prepare_one(src,
+                        output_path_for_dapi(project_dir, src, mode),
                         channel=ch, z_projection=z,
                         project_dir=project_dir)
             rep.n_prepared += 1
@@ -157,6 +177,7 @@ def prepare_directory(
     z_projection: str = "max",
     per_image: dict | None = None,
     included_names: set[str] | None = None,
+    mode: str = "microglia",
 ) -> PrepareReport:
     """Prepare source files in ``project_dir``.
 
@@ -171,7 +192,7 @@ def prepare_directory(
     rep = PrepareReport()
     per_image = per_image or {}
     sources = list_source_files(project_dir)
-    out_dir = prepared_dir(project_dir)
+    out_dir = prepared_dir(project_dir, mode)
     out_dir.mkdir(parents=True, exist_ok=True)
     for src in sources:
         if included_names is not None and src.name not in included_names:
@@ -180,7 +201,7 @@ def prepare_directory(
         c = int(override.get("channel", channel))
         z = str(override.get("z_projection", z_projection))
         try:
-            prepare_one(src, output_path_for(project_dir, src),
+            prepare_one(src, output_path_for(project_dir, src, mode),
                         channel=c, z_projection=z,
                         project_dir=project_dir)
             rep.n_prepared += 1

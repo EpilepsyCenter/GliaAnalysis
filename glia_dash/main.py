@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 
 from dash import (
-    Dash, Input, Output, State, callback, ctx, dcc, html, no_update,
+    ALL, Dash, Input, Output, State, callback, ctx, dcc, html, no_update,
 )
 import dash_bootstrap_components as dbc
 
@@ -27,6 +27,7 @@ from glia_dash.components import (
     sidebar_divider,
 )
 from glia_dash.pages import (
+    astrocyte_analysis as astrocyte_page,
     cluster as cluster_page,
     explore as explore_page,
     export as export_page,
@@ -52,17 +53,44 @@ server = app.server
 
 
 # ── Tab definitions ───────────────────────────────────────────────────
+#
+# Every possible tab across all modes lives in TAB_DEFS so the global
+# switch_tab callback can register Inputs for every tab.id. Only the
+# subset returned by ``_visible_tabs(mode)`` is rendered into the tab
+# bar at any given time — toggling sidebar mode reshapes the bar.
+#
+# microglia: setup → segment → features → explore → cluster →
+#            inflammation → stats → export
+# astrocyte: setup → astrocyte_analysis → explore → inflammation →
+#            stats → export
+# (Both modes share Setup, Explore, Inflammation, Stats, Export.)
 
 TAB_DEFS = [
-    ("setup",        "Setup"),
-    ("segment",      "Segment"),
-    ("features",     "Features"),
-    ("explore",      "Explore"),
-    ("cluster",      "Cluster"),
-    ("inflammation", "Inflammation"),
-    ("stats",        "Stats"),
-    ("export",       "Export"),
+    ("setup",              "Setup"),
+    ("segment",            "Segment"),
+    ("features",           "Features"),
+    ("astrocyte_analysis", "Astrocyte"),
+    ("explore",            "Explore"),
+    ("cluster",            "Cluster"),
+    ("inflammation",       "Inflammation"),
+    ("stats",              "Stats"),
+    ("export",             "Export"),
 ]
+
+_TABS_BY_MODE = {
+    "microglia": ["setup", "segment", "features", "explore", "cluster",
+                  "inflammation", "stats", "export"],
+    "astrocyte": ["setup", "astrocyte_analysis", "explore",
+                  "inflammation", "stats", "export"],
+}
+
+
+def _visible_tabs(mode: str) -> list[tuple[str, str]]:
+    """Tab (id, label) pairs to render for the current mode."""
+    ids = _TABS_BY_MODE.get(mode or "microglia",
+                            _TABS_BY_MODE["microglia"])
+    by_id = dict(TAB_DEFS)
+    return [(tid, by_id[tid]) for tid in ids if tid in by_id]
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────
@@ -151,16 +179,30 @@ def _sidebar() -> html.Div:
 # ── Tab bar ───────────────────────────────────────────────────────────
 
 
-def _tab_bar() -> html.Div:
-    nav_items = [
-        dbc.NavLink(label, id=f"tab-{tid}",
-                    active=(tid == "setup"), n_clicks=0)
-        for tid, label in TAB_DEFS
+def _nav_items_for(mode: str, active: str = "setup") -> list:
+    """Build NavLinks only for the tabs visible in the given mode.
+
+    IDs are pattern-matching dicts (``{"type": "tab", "id": tid}``)
+    rather than static strings. This lets the global switch_tab
+    callback target ALL such NavLinks without referencing IDs that
+    don't currently exist in the DOM — important because mode-flip
+    adds/removes NavLinks, and a static-id Input would crash with
+    "nonexistent object" the moment its target isn't rendered.
+    """
+    return [
+        dbc.NavLink(label, id={"type": "tab", "id": tid},
+                    active=(tid == active), n_clicks=0)
+        for tid, label in _visible_tabs(mode)
     ]
+
+
+def _tab_bar() -> html.Div:
     return html.Div(
         id="tab-bar",
         children=[
-            dbc.Nav(nav_items, pills=False, className="nav-tabs",
+            dbc.Nav(id="tab-nav",
+                    children=_nav_items_for("microglia", active="setup"),
+                    pills=False, className="nav-tabs",
                     style={"display": "flex", "flexWrap": "nowrap"}),
         ],
     )
@@ -233,32 +275,56 @@ def on_theme_change(theme, refresh):
 
 @callback(
     Output("active-tab", "data"),
-    *[Output(f"tab-{tid}", "active") for tid, _ in TAB_DEFS],
-    *[Input(f"tab-{tid}", "n_clicks") for tid, _ in TAB_DEFS],
+    Output({"type": "tab", "id": ALL}, "active"),
+    Input({"type": "tab", "id": ALL}, "n_clicks"),
     State("active-tab", "data"),
+    State({"type": "tab", "id": ALL}, "id"),
     prevent_initial_call=True,
 )
-def switch_tab(*args):
-    n = len(TAB_DEFS)
-    current = args[n]
+def switch_tab(n_clicks_list, current, ids):
+    """Switch active tab in response to a NavLink click.
+
+    Pattern-matching ``ALL`` targets any subset of tabs currently
+    mounted, so the callback survives mode flips that
+    add/remove NavLinks. Two gotchas this implementation handles:
+
+    * **Phantom fires on remount.** When ``on_mode_change`` rebuilds
+      ``tab-nav`` children, the new NavLinks each enter with
+      ``n_clicks=0`` and Dash fires this callback with one of them as
+      ``triggered_id``. We ignore that by requiring the triggered
+      NavLink's actual ``n_clicks`` to be truthy.
+    * **No ``no_update`` for pattern-matching outputs.** Always return
+      a concrete list whose length matches the currently-rendered
+      NavLinks; Dash rejects scalar ``no_update`` here.
+    """
     triggered = ctx.triggered_id
-    if triggered is None:
-        active_flags = tuple(tid == current for tid, _ in TAB_DEFS)
-        return (current,) + active_flags
-    new_tab = triggered.replace("tab-", "")
-    active_flags = tuple(tid == new_tab for tid, _ in TAB_DEFS)
-    return (new_tab,) + active_flags
+    ids = ids or []
+    n_clicks_list = n_clicks_list or []
+    new_active = current or "setup"
+
+    if isinstance(triggered, dict) and triggered.get("type") == "tab":
+        for i, idict in enumerate(ids):
+            if idict == triggered:
+                clicked_count = (n_clicks_list[i]
+                                 if i < len(n_clicks_list) else 0)
+                if clicked_count:
+                    new_active = triggered["id"]
+                break
+
+    active_flags = [idict.get("id") == new_active for idict in ids]
+    return new_active, active_flags
 
 
 _PAGE_LAYOUTS = {
-    "setup":        setup_page.layout,
-    "segment":      segment_page.layout,
-    "features":     features_page.layout,
-    "explore":      explore_page.layout,
-    "cluster":      cluster_page.layout,
-    "inflammation": inflammation_page.layout,
-    "stats":        stats_page.layout,
-    "export":       export_page.layout,
+    "setup":              setup_page.layout,
+    "segment":            segment_page.layout,
+    "features":           features_page.layout,
+    "astrocyte_analysis": astrocyte_page.layout,
+    "explore":            explore_page.layout,
+    "cluster":            cluster_page.layout,
+    "inflammation":       inflammation_page.layout,
+    "stats":              stats_page.layout,
+    "export":             export_page.layout,
 }
 
 
@@ -280,15 +346,47 @@ def render_tab(active_tab, _refresh, sid):
 
 @callback(
     Output("tab-refresh", "data", allow_duplicate=True),
+    Output("tab-nav", "children"),
+    Output("active-tab", "data", allow_duplicate=True),
     Input("sidebar-mode", "value"),
+    State("active-tab", "data"),
     State("session-id", "data"),
     State("tab-refresh", "data"),
     prevent_initial_call=True,
 )
-def on_mode_change(mode, sid, refresh):
+def on_mode_change(mode, current_tab, sid, refresh):
+    """Mode flip rebuilds the tab bar and snaps to a valid tab.
+
+    Also reloads ``state.features_df`` from the right on-disk CSV
+    (features.csv vs astrocyte_features.csv) so Explore / Stats /
+    Inflammation see the correct dataframe immediately, without
+    needing the user to rerun extraction.
+
+    If the user was on a microglia-only tab (e.g. Cluster) and flips
+    to astrocyte, that tab disappears from the bar; we redirect them
+    to Setup so the page area doesn't try to render a hidden tab.
+    """
     state = server_state.get_session(sid)
-    state.mode = mode or "microglia"
-    return (refresh or 0) + 1
+    mode = mode or "microglia"
+    state.mode = mode
+
+    # Swap the in-memory dataframe to match the new mode's on-disk CSV.
+    if state.project_dir:
+        try:
+            if mode == "astrocyte":
+                from glia.astrocyte import load_astrocyte_features_df
+                df_loaded = load_astrocyte_features_df(state.project_dir)
+            else:
+                from glia.features import load_features_df
+                df_loaded = load_features_df(state.project_dir)
+            state.features_df = df_loaded
+        except Exception:
+            pass
+
+    visible_ids = {tid for tid, _ in _visible_tabs(mode)}
+    new_active = current_tab if current_tab in visible_ids else "setup"
+    nav = _nav_items_for(mode, active=new_active)
+    return (refresh or 0) + 1, nav, new_active
 
 
 # ── Sidebar: project dir folder picker ────────────────────────────────
@@ -328,10 +426,16 @@ def on_browse_project(n_clicks, sid, refresh):
         pass
     # Rehydrate the features dataframe (with parsed metadata + any prior
     # PCA / cluster assignments) so the user doesn't have to rerun
-    # Features after reopening.
+    # Features after reopening. In astrocyte mode the on-disk table is
+    # ``astrocyte_features.csv`` (one row per (image, ROI)); in
+    # microglia mode it's ``features.csv`` (one row per cell).
     try:
-        from glia.features import load_features_df
-        df_loaded = load_features_df(folder)
+        if (state.mode or "microglia") == "astrocyte":
+            from glia.astrocyte import load_astrocyte_features_df
+            df_loaded = load_astrocyte_features_df(folder)
+        else:
+            from glia.features import load_features_df
+            df_loaded = load_features_df(folder)
         if df_loaded is not None:
             state.features_df = df_loaded
             if "Cluster" in df_loaded.columns:

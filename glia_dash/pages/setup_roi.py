@@ -48,12 +48,12 @@ def _load_image(path: str) -> np.ndarray:
     return _IMAGE_CACHE[path][1]
 
 
-def _list_images(folder: str) -> list[str]:
+def _list_images(folder: str, mode: str = "microglia") -> list[str]:
     """Return the prepared 8-bit TIFFs for the project, falling back to
     legacy top-level TIFFs if the Prepare step hasn't been run yet."""
     if not folder or not Path(folder).is_dir():
         return []
-    prep = prepared_dir(folder)
+    prep = prepared_dir(folder, mode)
     if prep.is_dir():
         prepared = sorted(
             str(p) for p in prep.iterdir()
@@ -121,7 +121,8 @@ def _normalize_tag(tag: str | None) -> str:
 def roi_layout(sid: str | None) -> html.Div:
     state = server_state.get_session(sid)
     folder = state.project_dir
-    images = _list_images(folder)
+    mode = getattr(state, "mode", "microglia") or "microglia"
+    images = _list_images(folder, mode)
     idx = int(state.extra.get("roi_image_idx", 0))
     if images and idx >= len(images):
         idx = 0

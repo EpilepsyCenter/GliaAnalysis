@@ -9,7 +9,7 @@ from dash import (
 )
 import dash_bootstrap_components as dbc
 
-from glia.config import ALL_FEATURES, DERIVED_FEATURES
+from glia.config import ALL_FEATURES, ASTROCYTE_FEATURES, DERIVED_FEATURES
 from glia.stats import (
     aggregate_to_animal,
     cluster_percentages_per_animal,
@@ -33,9 +33,11 @@ _PADJUST_OPTIONS = ("none", "bonf", "sidak", "holm", "fdr_bh")
 _ID_LIKE_COLS = {"ID", "roi_tag", "cell_index", "Cluster", "morphology_label"}
 
 
-def _feature_columns(df: pd.DataFrame) -> list[str]:
-    return [c for c in (ALL_FEATURES + DERIVED_FEATURES)
-            if c in df.columns]
+def _feature_columns(df: pd.DataFrame, mode: str = "microglia") -> list[str]:
+    base = (ASTROCYTE_FEATURES if (mode or "").lower() == "astrocyte"
+            else ALL_FEATURES)
+    pool = list(dict.fromkeys(base + DERIVED_FEATURES))
+    return [c for c in pool if c in df.columns]
 
 
 def _metadata_candidates(df: pd.DataFrame) -> list[str]:
@@ -154,7 +156,7 @@ def layout(sid: str | None) -> html.Div:
         ])
 
     meta_cols = _metadata_candidates(df)
-    feats = _feature_columns(df)
+    feats = _feature_columns(df, getattr(state, "mode", "microglia"))
 
     # Honor the user's last selections (per-session, also persisted
     # into the project JSON so they survive a folder reopen). Fall
@@ -478,7 +480,7 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
     except Exception:
         pass
 
-    feats = _feature_columns(df)
+    feats = _feature_columns(df, getattr(state, "mode", "microglia"))
     # Clean inf so aggregation/mean doesn't propagate them.
     work = df.copy()
     work[feats] = work[feats].replace([np.inf, -np.inf], np.nan)

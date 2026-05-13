@@ -293,7 +293,8 @@ def prepare_layout(sid: str | None) -> html.Div:
         ])
 
     sources = list_source_files(project)
-    out_dir = prepared_dir(project)
+    mode = getattr(state, "mode", "microglia") or "microglia"
+    out_dir = prepared_dir(project, mode)
     n_prepared = (len(list(out_dir.glob("*.tif")))
                   if out_dir.exists() else 0)
 
@@ -979,6 +980,9 @@ def on_select_clear(n_clicks):
 
 @callback(
     Output("prepare-status", "children"),
+    Output("roi-images-store", "data", allow_duplicate=True),
+    Output("setup-image-chip-row", "children", allow_duplicate=True),
+    Output("setup-preview-path-store", "data", allow_duplicate=True),
     Input("prepare-run", "n_clicks"),
     State("prepare-table", "virtualRowData"),
     State("prepare-table", "rowData"),
@@ -992,20 +996,23 @@ def on_prepare(n_clicks, virtual_rows, rows,
     if virtual_rows:
         rows = virtual_rows
     if not n_clicks:
-        return no_update
+        return no_update, no_update, no_update, no_update
     state = server_state.get_session(sid)
     project = state.project_dir
     if not project or not Path(project).is_dir():
-        return alert("No project folder.", variant="warning")
+        return (alert("No project folder.", variant="warning"),
+                no_update, no_update, no_update)
 
     # Persist whatever's currently in the table before running.
     if rows:
         rows = _refresh_channel_indices(project, [dict(r) for r in rows])
         set_image_metadata(project, rows)
 
+    mode = getattr(state, "mode", "microglia") or "microglia"
     # Wipe Prepared/ so excluded files don't leave stale 8-bit TIFFs
-    # behind from a previous run.
-    out_dir = prepared_dir(project)
+    # behind from a previous run. Mode-aware so the *other* mode's
+    # Prepared/ is untouched.
+    out_dir = prepared_dir(project, mode)
     n_cleared = 0
     if out_dir.exists():
         for p in out_dir.iterdir():
@@ -1047,13 +1054,14 @@ def on_prepare(n_clicks, virtual_rows, rows,
         z_projection=str(default_z or "max"),
         per_image=per_image,
         included_names=included_names,
+        mode=mode,
     )
 
     # Optional DAPI pass — opt-in via the Soma tab toggle. Wipes
     # Prepared_dapi/ on each run so stale crops can't survive a config
     # change (e.g. user switched DAPI off for some images).
     dapi_rep = None
-    dapi_dir_path = prepared_dapi_dir(project)
+    dapi_dir_path = prepared_dapi_dir(project, mode)
     if dapi_dir_path.exists():
         for p in dapi_dir_path.iterdir():
             if p.is_file():
@@ -1081,6 +1089,7 @@ def on_prepare(n_clicks, virtual_rows, rows,
                 dapi_per_image=dapi_per_image,
                 z_projection=str(default_z or "max"),
                 included_names=set(dapi_per_image.keys()),
+                mode=mode,
             )
 
     dt = time.time() - t0
@@ -1113,12 +1122,38 @@ def on_prepare(n_clicks, virtual_rows, rows,
             variant="warning",
         ))
     body.append(html.Div(
-        f"Output → {prepared_dir(project)}"
-        + (f"  +  {prepared_dapi_dir(project)}"
+        f"Output → {prepared_dir(project, mode)}"
+        + (f"  +  {prepared_dapi_dir(project, mode)}"
            if dapi_rep is not None and dapi_rep.n_prepared > 0
            else ""),
         style={"fontSize": "0.78rem",
                "color": "var(--ned-text-muted)",
                "marginTop": "6px"},
     ))
-    return html.Div(body)
+
+    # Refresh the ROI and Threshold subtab image lists from the
+    # freshly-prepared directory so the user doesn't have to reload
+    # the project folder. dbc.Tabs renders all subtab layouts eagerly
+    # at Setup-mount time, so the ROI store + Threshold chip row sit
+    # in the DOM with the *pre-Prepare* image listing — these outputs
+    # bring them up to date.
+    from glia_dash.pages.setup_roi import _list_images as _roi_list_images
+    from glia_dash.pages.setup_threshold import (
+        _list_project_images as _threshold_list_images,
+        _render_image_chips as _threshold_render_chips,
+    )
+    refreshed_images = _roi_list_images(project, mode)
+    roi_store = {"folder": project, "images": refreshed_images, "idx": 0}
+    threshold_images = _threshold_list_images(project, mode)
+    threshold_current = (state.extra.get("preview_image_path", "")
+                         or (threshold_images[0]
+                             if threshold_images else ""))
+    if threshold_current and threshold_current not in threshold_images:
+        threshold_current = (threshold_images[0]
+                             if threshold_images else "")
+    state.extra["preview_image_path"] = threshold_current
+    threshold_chips = _threshold_render_chips(
+        project, threshold_current, mode,
+    )
+
+    return html.Div(body), roi_store, threshold_chips, threshold_current

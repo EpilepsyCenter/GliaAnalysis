@@ -10,7 +10,7 @@ import dash_bootstrap_components as dbc
 from plotly.subplots import make_subplots
 from scipy.stats import spearmanr
 
-from glia.config import ALL_FEATURES, DERIVED_FEATURES
+from glia.config import ALL_FEATURES, ASTROCYTE_FEATURES, DERIVED_FEATURES
 from glia.transforms import apply_transform
 from glia_dash import server_state
 from glia_dash.components import alert, metric_card
@@ -24,17 +24,27 @@ _DEFAULT_DIST_FEATURES = [
 _METADATA_COLS = ("ID", "roi_tag", "cell_index")
 
 
-def _feature_columns(df: pd.DataFrame) -> list[str]:
-    """Numeric per-cell columns to expose in the Explore tab — the
-    raw morphology features plus any derived per-cell scores
-    (inflammation_index, etc.)."""
-    return [c for c in (ALL_FEATURES + DERIVED_FEATURES)
-            if c in df.columns]
+def _feature_columns(df: pd.DataFrame, mode: str = "microglia") -> list[str]:
+    """Numeric columns to expose as features in the Explore tab.
+
+    Microglia mode: the 36 per-cell morphology features.
+    Astrocyte mode: the 9 per-(image, ROI) network metrics.
+
+    Both modes also include ``DERIVED_FEATURES`` (e.g. the trained
+    inflammation_index) when present.
+    """
+    base = (ASTROCYTE_FEATURES if (mode or "").lower() == "astrocyte"
+            else ALL_FEATURES)
+    # Use dict.fromkeys to dedupe while preserving order — some names
+    # appear in both ALL_FEATURES and ASTROCYTE_FEATURES (e.g.
+    # "# of branches"). Dedupe is cheap and keeps the picker tidy.
+    pool = list(dict.fromkeys(base + DERIVED_FEATURES))
+    return [c for c in pool if c in df.columns]
 
 
-def _grouping_options(df: pd.DataFrame) -> list[dict]:
+def _grouping_options(df: pd.DataFrame, mode: str = "microglia") -> list[dict]:
     """Possible categorical columns to group distributions by."""
-    feats = set(_feature_columns(df))
+    feats = set(_feature_columns(df, mode))
     drop = set(_METADATA_COLS) | feats
     cats = [c for c in df.columns
             if c not in drop and df[c].dtype.kind not in "fi"]
@@ -62,8 +72,9 @@ def layout(sid: str | None) -> html.Div:
                   variant="warning"),
         ])
 
-    feats = _feature_columns(df)
-    grouping_opts = _grouping_options(df)
+    mode = getattr(state, "mode", "microglia") or "microglia"
+    feats = _feature_columns(df, mode)
+    grouping_opts = _grouping_options(df, mode)
     valid_group_values = {opt["value"] for opt in grouping_opts}
 
     # Remember the user's last selections per session (and per project
@@ -302,9 +313,10 @@ def _build_distributions(df: pd.DataFrame, features: list[str],
     return fig
 
 
-def _build_correlations(df: pd.DataFrame, theme: str) -> go.Figure:
+def _build_correlations(df: pd.DataFrame, theme: str,
+                        mode: str = "microglia") -> go.Figure:
     p = _theme_palette(theme)
-    feats = _feature_columns(df)
+    feats = _feature_columns(df, mode)
     if len(feats) < 2:
         return go.Figure()
     sub = df[feats].copy()
@@ -371,7 +383,7 @@ def update_plots(transform, group, features, show_points, theme, sid):
     except Exception:
         pass
 
-    feats_all = _feature_columns(df_raw)
+    feats_all = _feature_columns(df_raw, getattr(state, "mode", "microglia"))
     if transform and transform != "none":
         df_dist = apply_transform(df_raw, feats_all, transform)
     else:
@@ -382,5 +394,6 @@ def update_plots(transform, group, features, show_points, theme, sid):
     return (
         _build_distributions(df_dist, list(features or []), group or "",
                              theme, show_points=bool(show_points)),
-        _build_correlations(df_raw, theme),
+        _build_correlations(df_raw, theme,
+                            mode=getattr(state, "mode", "microglia")),
     )

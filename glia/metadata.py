@@ -31,6 +31,13 @@ def join_project_image_metadata(
     if df is None or len(df) == 0:
         return df
 
+    # Astrocyte rows carry image_stem / roi_tag directly and don't
+    # have a cell-level ``ID`` column; their metadata is joined by
+    # the astrocyte page itself. Bail out so the per-cell parser
+    # below doesn't KeyError on the missing column.
+    if "ID" not in df.columns:
+        return df
+
     user_cols = sorted({
         k for row in (image_metadata or []) for k, v in row.items()
         if k not in _RESERVED_META_COLS

@@ -223,6 +223,57 @@ def extract_single_cells(
     return n_total, skipped
 
 
+def run_threshold_only(params: SegmentParams) -> SegmentReport:
+    """Phase 1 only: FIJI-threshold every prepared image into
+    ``params.thresholded_dir``. Does NOT run Phase 2 (single-cell
+    extraction) or Phase 3 (skeleton). The astrocyte pipeline calls
+    this on its own ``_gliaanalysis/astrocyte/Prepared/`` so it can
+    produce the GFAP binaries needed by
+    ``glia.astrocyte.extract_astrocyte_features_from_project``.
+
+    Wipes ``thresholded_dir`` on each run so stale binaries from a
+    different threshold setting can't survive.
+    """
+    if not Path(params.fiji_path).exists():
+        raise FileNotFoundError(
+            f"FIJI executable not found: {params.fiji_path}")
+    if not params.input_dir.is_dir():
+        raise NotADirectoryError(
+            f"input_dir is not a directory: {params.input_dir}")
+    params.output_dir.mkdir(parents=True, exist_ok=True)
+
+    report = SegmentReport()
+    inputs = sorted([p for p in params.input_dir.glob("*.tif")] +
+                    [p for p in params.input_dir.glob("*.tiff")])
+    report.n_input_images = len(inputs)
+
+    cleared = 0
+    if params.thresholded_dir.exists():
+        for p in params.thresholded_dir.iterdir():
+            if p.is_file():
+                try:
+                    p.unlink()
+                    cleared += 1
+                except Exception:
+                    pass
+    legacy_areas = params.thresholded_dir / "Areas.csv"
+    if legacy_areas.exists():
+        try:
+            legacy_areas.unlink()
+            cleared += 1
+        except Exception:
+            pass
+    report.n_cleared = cleared
+
+    params.thresholded_dir.mkdir(parents=True, exist_ok=True)
+    proc1 = run_headless(params.fiji_path, _THRESHOLD_MACRO,
+                         params.fiji_args())
+    report.phase1_stdout = proc1.stdout + (
+        "\n" + proc1.stderr if proc1.stderr else "")
+    report.n_thresholded = len(list(params.thresholded_dir.glob("*.tif")))
+    return report
+
+
 def run_pipeline(params: SegmentParams) -> SegmentReport:
     """End-to-end: threshold → extract single cells → skeletonize.
 
