@@ -31,6 +31,7 @@ from glia_dash.pages import (
     explore as explore_page,
     export as export_page,
     features as features_page,
+    inflammation as inflammation_page,
     segment as segment_page,
     setup as setup_page,
     stats as stats_page,
@@ -53,13 +54,14 @@ server = app.server
 # ── Tab definitions ───────────────────────────────────────────────────
 
 TAB_DEFS = [
-    ("setup",    "Setup"),
-    ("segment",  "Segment"),
-    ("features", "Features"),
-    ("explore",  "Explore"),
-    ("cluster",  "Cluster"),
-    ("stats",    "Stats"),
-    ("export",   "Export"),
+    ("setup",        "Setup"),
+    ("segment",      "Segment"),
+    ("features",     "Features"),
+    ("explore",      "Explore"),
+    ("cluster",      "Cluster"),
+    ("inflammation", "Inflammation"),
+    ("stats",        "Stats"),
+    ("export",       "Export"),
 ]
 
 
@@ -249,13 +251,14 @@ def switch_tab(*args):
 
 
 _PAGE_LAYOUTS = {
-    "setup":    setup_page.layout,
-    "segment":  segment_page.layout,
-    "features": features_page.layout,
-    "explore":  explore_page.layout,
-    "cluster":  cluster_page.layout,
-    "stats":    stats_page.layout,
-    "export":   export_page.layout,
+    "setup":        setup_page.layout,
+    "segment":      segment_page.layout,
+    "features":     features_page.layout,
+    "explore":      explore_page.layout,
+    "cluster":      cluster_page.layout,
+    "inflammation": inflammation_page.layout,
+    "stats":        stats_page.layout,
+    "export":       export_page.layout,
 }
 
 

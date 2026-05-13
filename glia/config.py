@@ -58,6 +58,14 @@ ALL_FEATURES = (
     FRACLAC_FEATURES + SKELETON_FEATURES + SOMA_FEATURES + SHOLL_FEATURES
 )  # 36 total
 
+# Derived numeric per-cell columns (added by analysis steps, not by the
+# raw morphology extraction). Pages that surface "all per-cell metrics"
+# should treat these as features so Explore / Stats see them
+# automatically.
+DERIVED_FEATURES = [
+    "inflammation_index",
+]
+
 # Diagnostic features used by the auto cluster labeler. Names must match ALL_FEATURES.
 DIAGNOSTIC_FEATURES = [
     "Circularity",

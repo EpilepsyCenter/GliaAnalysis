@@ -57,6 +57,21 @@ _PROJECT_FIELDS = (
     "use_dapi",
 )
 
+# Extra fields persisted from SessionState.extra. These don't live as
+# typed attributes on SessionState but we still want them to round-trip.
+_PROJECT_EXTRA_FIELDS = (
+    "inflammation_model",
+    # Explore tab selections
+    "explore_features",
+    "explore_group",
+    "explore_show_points",
+    # Stats tab selections (animal_id_col + factor_cols already on state)
+    "stats_features",
+    "stats_method",
+    "stats_padjust",
+    "stats_aggregate",
+)
+
 # State fields that live on SessionState and belong in the user file.
 _USER_FIELDS = ("fiji_path",)
 
@@ -73,6 +88,11 @@ def _state_to_project_dict(state) -> dict:
     cl = out.get("cluster_labels")
     if isinstance(cl, dict):
         out["cluster_labels"] = {str(k): v for k, v in cl.items()}
+    # Pull selected extra-store keys into the JSON so they survive reloads.
+    extra = getattr(state, "extra", None) or {}
+    for name in _PROJECT_EXTRA_FIELDS:
+        if name in extra:
+            out[name] = extra[name]
     return out
 
 
@@ -130,6 +150,13 @@ def apply_project_settings(state, settings: dict) -> None:
             setattr(state, name, val)
         except Exception:
             pass
+    # Extra-store keys: drop them on state.extra so the Inflammation
+    # page can find a previously trained model after a folder reopen.
+    extra = getattr(state, "extra", None)
+    if extra is not None:
+        for name in _PROJECT_EXTRA_FIELDS:
+            if name in settings:
+                extra[name] = settings[name]
 
 
 # ── User settings ───────────────────────────────────────────────────

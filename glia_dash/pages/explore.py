@@ -10,7 +10,7 @@ import dash_bootstrap_components as dbc
 from plotly.subplots import make_subplots
 from scipy.stats import spearmanr
 
-from glia.config import ALL_FEATURES
+from glia.config import ALL_FEATURES, DERIVED_FEATURES
 from glia.transforms import apply_transform
 from glia_dash import server_state
 from glia_dash.components import alert, metric_card
@@ -25,8 +25,11 @@ _METADATA_COLS = ("ID", "roi_tag", "cell_index")
 
 
 def _feature_columns(df: pd.DataFrame) -> list[str]:
-    """The 27 numeric feature columns present in the dataframe."""
-    return [c for c in ALL_FEATURES if c in df.columns]
+    """Numeric per-cell columns to expose in the Explore tab — the
+    raw morphology features plus any derived per-cell scores
+    (inflammation_index, etc.)."""
+    return [c for c in (ALL_FEATURES + DERIVED_FEATURES)
+            if c in df.columns]
 
 
 def _grouping_options(df: pd.DataFrame) -> list[dict]:
@@ -61,10 +64,31 @@ def layout(sid: str | None) -> html.Div:
 
     feats = _feature_columns(df)
     grouping_opts = _grouping_options(df)
-    default_group = grouping_opts[1]["value"] if len(grouping_opts) > 1 else ""
-    default_dist = [c for c in _DEFAULT_DIST_FEATURES if c in feats]
+    valid_group_values = {opt["value"] for opt in grouping_opts}
+
+    # Remember the user's last selections per session (and per project
+    # if reopened from disk). Hardcoded defaults are only used the
+    # first time the tab is touched on a fresh project.
+    saved_group = state.extra.get("explore_group")
+    if saved_group is None or saved_group not in valid_group_values:
+        default_group = (grouping_opts[1]["value"]
+                         if len(grouping_opts) > 1 else "")
+    else:
+        default_group = saved_group
+
+    saved_features = state.extra.get("explore_features")
+    if isinstance(saved_features, list):
+        default_dist = [c for c in saved_features if c in feats]
+    else:
+        default_dist = []
+    if not default_dist:
+        default_dist = [c for c in _DEFAULT_DIST_FEATURES if c in feats]
     if not default_dist:
         default_dist = feats[:6]
+
+    saved_show_points = state.extra.get("explore_show_points")
+    show_points_default = (bool(saved_show_points)
+                           if saved_show_points is not None else True)
 
     return html.Div([
         html.H4("Explore", style={"marginBottom": "8px"}),
@@ -133,7 +157,7 @@ def layout(sid: str | None) -> html.Div:
                                   "letterSpacing": "0.5px"}),
                 dbc.Switch(id="explore-show-points",
                            label="overlay individual cells",
-                           value=True,
+                           value=show_points_default,
                            style={"fontSize": "0.82rem"}),
             ]),
         ], style={"display": "flex",
@@ -334,6 +358,18 @@ def update_plots(transform, group, features, show_points, theme, sid):
     if df_raw is None or len(df_raw) == 0:
         return go.Figure(), go.Figure()
     state.transform = transform or "none"
+
+    # Mirror the user's current selections so re-rendering this page
+    # (tab switch, refresh, folder reopen) restores them. Stored on
+    # state.extra because they're UI preferences, not analysis params.
+    state.extra["explore_features"] = list(features or [])
+    state.extra["explore_group"] = group or ""
+    state.extra["explore_show_points"] = bool(show_points)
+    try:
+        from glia.settings import save_project_settings
+        save_project_settings(state.project_dir, state)
+    except Exception:
+        pass
 
     feats_all = _feature_columns(df_raw)
     if transform and transform != "none":

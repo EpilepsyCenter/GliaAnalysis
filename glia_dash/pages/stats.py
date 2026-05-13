@@ -9,7 +9,7 @@ from dash import (
 )
 import dash_bootstrap_components as dbc
 
-from glia.config import ALL_FEATURES
+from glia.config import ALL_FEATURES, DERIVED_FEATURES
 from glia.stats import (
     aggregate_to_animal,
     cluster_percentages_per_animal,
@@ -34,7 +34,8 @@ _ID_LIKE_COLS = {"ID", "roi_tag", "cell_index", "Cluster", "morphology_label"}
 
 
 def _feature_columns(df: pd.DataFrame) -> list[str]:
-    return [c for c in ALL_FEATURES if c in df.columns]
+    return [c for c in (ALL_FEATURES + DERIVED_FEATURES)
+            if c in df.columns]
 
 
 def _metadata_candidates(df: pd.DataFrame) -> list[str]:
@@ -154,7 +155,27 @@ def layout(sid: str | None) -> html.Div:
 
     meta_cols = _metadata_candidates(df)
     feats = _feature_columns(df)
-    default_dv = [c for c in _DEFAULT_FEATURES if c in feats] or feats[:4]
+
+    # Honor the user's last selections (per-session, also persisted
+    # into the project JSON so they survive a folder reopen). Fall
+    # back to module defaults only on first use.
+    saved_features = state.extra.get("stats_features")
+    if isinstance(saved_features, list) and saved_features:
+        default_dv = [c for c in saved_features if c in feats]
+    else:
+        default_dv = []
+    if not default_dv:
+        default_dv = [c for c in _DEFAULT_FEATURES if c in feats] or feats[:4]
+
+    saved_method = state.extra.get("stats_method")
+    method_default = (saved_method if saved_method in
+                      ("anova", "welch", "kruskal") else "anova")
+    saved_padjust = state.extra.get("stats_padjust")
+    padjust_default = (saved_padjust if saved_padjust in _PADJUST_OPTIONS
+                       else "holm")
+    saved_aggregate = state.extra.get("stats_aggregate")
+    aggregate_default = (bool(saved_aggregate)
+                         if saved_aggregate is not None else True)
 
     # Sensible defaults for animal + factors.
     animal_default = (state.animal_id_col
@@ -241,7 +262,7 @@ def layout(sid: str | None) -> html.Div:
                                  {"label": "Kruskal-Wallis (non-parametric)",
                                   "value": "kruskal"},
                              ],
-                             value="anova", clearable=False,
+                             value=method_default, clearable=False,
                              style={"width": "220px"}),
             ], style={"marginRight": "24px"}),
 
@@ -254,7 +275,7 @@ def layout(sid: str | None) -> html.Div:
                 dcc.Dropdown(id="stats-padjust",
                              options=[{"label": p, "value": p}
                                       for p in _PADJUST_OPTIONS],
-                             value="holm", clearable=False,
+                             value=padjust_default, clearable=False,
                              style={"width": "140px"}),
             ]),
         ], style={"display": "flex",
@@ -277,7 +298,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 dbc.Switch(id="stats-aggregate",
                            label="Aggregate to animal level",
-                           value=True,
+                           value=aggregate_default,
                            style={"fontSize": "0.82rem"}),
             ], style={"marginLeft": "24px"}),
         ], style={"display": "flex",
@@ -445,6 +466,12 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
 
     state.animal_id_col = animal
     state.factor_cols = factors
+    # Remember the rest of the UI selections so the Stats tab opens
+    # in the same configuration after a tab switch / folder reopen.
+    state.extra["stats_features"] = list(features or [])
+    state.extra["stats_method"] = str(method or "anova")
+    state.extra["stats_padjust"] = str(padjust or "holm")
+    state.extra["stats_aggregate"] = bool(aggregate)
     try:
         from glia.settings import save_project_settings
         save_project_settings(state.project_dir, state)
