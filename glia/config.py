@@ -37,7 +37,26 @@ SKELETON_FEATURES = [
     "Maximum branch length",
 ]
 
-ALL_FEATURES = FRACLAC_FEATURES + SKELETON_FEATURES  # 27 total
+# Soma features derived from the radial scan (glia.radial.analyze_radial).
+SOMA_FEATURES = [
+    "Soma area",
+    "Soma perimeter",
+    "Soma circularity",
+    "Soma:cell area ratio",
+    "Primary process count",
+]
+
+# Sholl-derived features from the same radial scan.
+SHOLL_FEATURES = [
+    "Critical radius",
+    "Max process extent",
+    "Max Sholl intersections",
+    "Ramification index",
+]
+
+ALL_FEATURES = (
+    FRACLAC_FEATURES + SKELETON_FEATURES + SOMA_FEATURES + SHOLL_FEATURES
+)  # 36 total
 
 # Diagnostic features used by the auto cluster labeler. Names must match ALL_FEATURES.
 DIAGNOSTIC_FEATURES = [

@@ -26,25 +26,42 @@ import plotly.graph_objects as go
 import tifffile
 from dash import ALL, Input, Output, State, callback, ctx, dcc, html, no_update
 
+from glia.prepare import prepared_dir
 from glia.roi import save_project_rois, shape_anchor
 from glia_dash import server_state
 from glia_dash.components import empty_state
 
 
-_IMAGE_CACHE: dict[str, np.ndarray] = {}
+_IMAGE_CACHE: dict[str, tuple[float, np.ndarray]] = {}
 
 
 def _load_image(path: str) -> np.ndarray:
-    img = _IMAGE_CACHE.get(path)
-    if img is None:
-        img = tifffile.imread(path)
-        _IMAGE_CACHE[path] = img
-    return img
+    """mtime-aware cache: if the file changed (e.g. user re-prepared with a
+    different channel), drop the stale entry and re-read."""
+    try:
+        mtime = Path(path).stat().st_mtime
+    except OSError:
+        return tifffile.imread(path)
+    cached = _IMAGE_CACHE.get(path)
+    if cached is None or cached[0] != mtime:
+        _IMAGE_CACHE[path] = (mtime, tifffile.imread(path))
+    return _IMAGE_CACHE[path][1]
 
 
 def _list_images(folder: str) -> list[str]:
+    """Return the prepared 8-bit TIFFs for the project, falling back to
+    legacy top-level TIFFs if the Prepare step hasn't been run yet."""
     if not folder or not Path(folder).is_dir():
         return []
+    prep = prepared_dir(folder)
+    if prep.is_dir():
+        prepared = sorted(
+            str(p) for p in prep.iterdir()
+            if p.suffix.lower() in (".tif", ".tiff") and p.is_file()
+        )
+        if prepared:
+            return prepared
+    # Legacy fall-through: TIFFs sitting at the project root.
     return sorted(
         str(p) for p in Path(folder).iterdir()
         if p.suffix.lower() in (".tif", ".tiff") and p.is_file()

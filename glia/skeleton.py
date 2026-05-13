@@ -112,6 +112,10 @@ def analyze_directory(
     skipped: list[str] = []
     written = 0
     for tif in sorted(single_cells_dir.glob("*.tif")):
+        # Skip auxiliary sibling crops (e.g. ``<cell_id>__dapi.tif``).
+        # Those are grayscale nucleus channels, not cell masks.
+        if tif.stem.endswith("__dapi"):
+            continue
         try:
             img = tifffile.imread(tif)
         except Exception as e:

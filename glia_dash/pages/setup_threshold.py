@@ -29,13 +29,15 @@ from glia.preprocess import (
     preprocess_fiji_style,
     unsupported_methods,
 )
+from glia.prepare import prepared_dir
 from glia.roi import shape_anchor, union_mask
 from glia_dash import server_state
 from glia_dash.components import alert, browse_file, empty_state
 
 
-# ── Tiny in-process image cache so we don't re-read disk on every tweak.
-_IMAGE_CACHE: dict[str, np.ndarray] = {}
+# Tiny mtime-aware image cache so we don't re-read disk on every tweak,
+# but DO see fresh data if the user re-prepared the image.
+_IMAGE_CACHE: dict[str, tuple[float, np.ndarray]] = {}
 
 # Last-rendered labeled mask for the current Setup preview. Used for the
 # click-on-cell area lookup so we don't redo the threshold + label work.
@@ -62,16 +64,29 @@ def _markers_trace(selected: list[dict]) -> dict:
 
 
 def _load_image(path: str) -> np.ndarray:
-    img = _IMAGE_CACHE.get(path)
-    if img is None:
-        img = tifffile.imread(path)
-        _IMAGE_CACHE[path] = img
-    return img
+    try:
+        mtime = Path(path).stat().st_mtime
+    except OSError:
+        return tifffile.imread(path)
+    cached = _IMAGE_CACHE.get(path)
+    if cached is None or cached[0] != mtime:
+        _IMAGE_CACHE[path] = (mtime, tifffile.imread(path))
+    return _IMAGE_CACHE[path][1]
 
 
 def _list_project_images(folder: str) -> list[str]:
+    """Return the prepared 8-bit TIFFs (Prepare step output) for the
+    Threshold preview; legacy fall-through to top-level TIFFs."""
     if not folder or not Path(folder).is_dir():
         return []
+    prep = prepared_dir(folder)
+    if prep.is_dir():
+        prepared = sorted(
+            str(p) for p in prep.iterdir()
+            if p.suffix.lower() in (".tif", ".tiff") and p.is_file()
+        )
+        if prepared:
+            return prepared
     return sorted(
         str(p) for p in Path(folder).iterdir()
         if p.suffix.lower() in (".tif", ".tiff") and p.is_file()
@@ -756,8 +771,22 @@ def on_selection_change(click_orig, click_bin, reset_n, path, selected):
         return no_update, no_update, no_update, no_update
     lbl = int(labels[y, x])
     if lbl == 0:
-        return (selected, _summary_text(selected, "(clicked background)"),
-                len(selected) == 0, len(selected) == 0)
+        # Click landed on background — snap to the nearest cell within a
+        # small radius. Display-pixel precision is limited so a click
+        # 'just outside' a cell should still count as a hit on it.
+        SNAP_RADIUS = 6
+        y0 = max(0, y - SNAP_RADIUS); y1 = min(h, y + SNAP_RADIUS + 1)
+        x0 = max(0, x - SNAP_RADIUS); x1 = min(w, x + SNAP_RADIUS + 1)
+        sub = labels[y0:y1, x0:x1]
+        if sub.any():
+            ys_, xs_ = np.where(sub != 0)
+            dists = (ys_ - (y - y0)) ** 2 + (xs_ - (x - x0)) ** 2
+            i = int(np.argmin(dists))
+            lbl = int(sub[ys_[i], xs_[i]])
+        if lbl == 0:
+            return (selected,
+                    _summary_text(selected, "(clicked background)"),
+                    len(selected) == 0, len(selected) == 0)
 
     # Toggle: remove if already selected, otherwise append. Store the
     # component's centroid (computed from the labeled mask) so the marker

@@ -9,6 +9,7 @@ from pathlib import Path
 from dash import Input, Output, State, callback, dcc, html, no_update
 import dash_bootstrap_components as dbc
 
+from glia.prepare import prepared_dir
 from glia.segment import SegmentParams, run_pipeline
 from glia_dash import server_state
 from glia_dash.components import alert, metric_card
@@ -21,12 +22,26 @@ _OUTPUT_SUBDIR = "_gliaanalysis"
 
 
 def _project_tiffs(project_dir: str) -> list[str]:
+    """Prepared 8-bit TIFFs go through the pipeline; fall back to root."""
     if not project_dir or not Path(project_dir).is_dir():
         return []
+    prep = prepared_dir(project_dir)
+    if prep.is_dir():
+        prepared = sorted(
+            str(p) for p in prep.iterdir()
+            if p.suffix.lower() in (".tif", ".tiff") and p.is_file()
+        )
+        if prepared:
+            return prepared
     return sorted(
         str(p) for p in Path(project_dir).iterdir()
         if p.suffix.lower() in (".tif", ".tiff") and p.is_file()
     )
+
+
+def _segment_input_dir(project_dir: str) -> Path:
+    prep = prepared_dir(project_dir)
+    return prep if prep.is_dir() and any(prep.glob("*.tif")) else Path(project_dir)
 
 
 def _summary_grid(state) -> html.Div:
@@ -123,8 +138,18 @@ def on_run(n_clicks, sid):
         return alert(f"FIJI not found at {state.fiji_path!r}.",
                      variant="danger")
 
+    # Pick up Prepared_dapi/ only when the user has opted in AND the
+    # directory actually has prepared images. If they toggled use_dapi
+    # on but never prepared DAPI, we silently fall back to EDT-peak.
+    dapi_dir = None
+    if getattr(state, "use_dapi", False):
+        from glia.prepare import prepared_dapi_dir
+        candidate = prepared_dapi_dir(project)
+        if candidate.is_dir() and any(candidate.glob("*.tif")):
+            dapi_dir = candidate
+
     params = SegmentParams(
-        input_dir=Path(project),
+        input_dir=_segment_input_dir(project),
         output_dir=Path(project) / _OUTPUT_SUBDIR,
         fiji_path=state.fiji_path,
         threshold_kind=state.threshold_kind,
@@ -136,6 +161,7 @@ def on_run(n_clicks, sid):
         area_max=float(state.area_max),
         preprocess=bool(state.preprocess),
         rois=state.extra.get("rois", {}),
+        dapi_dir=dapi_dir,
     )
 
     t0 = time.time()

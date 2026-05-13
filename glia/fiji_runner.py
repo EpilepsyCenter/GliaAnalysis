@@ -21,20 +21,39 @@ def run_headless(
     args: dict,
     timeout: int = 600,
 ) -> subprocess.CompletedProcess:
-    """Invoke FIJI in headless mode with a single .ijm macro and pipe-delimited args.
+    """Invoke FIJI in headless mode with a script + pipe-delimited args.
 
-    The macro receives one string via getArgument() and parses it. We use a
-    pipe delimiter rather than commas because filenames sometimes contain commas.
+    Supports two script flavours:
+      * ``.ijm`` — IJ1 macro, args read via ``getArgument()``.
+      * ``.bsh`` — Beanshell, args read via ``bsh.args[0]``. We use this
+        for tasks where the IJ1 macro layer trips over headless GUI
+        prompts (e.g. Bio-Formats Importer's prompter dialog).
+
+    A pipe delimiter is used rather than commas because filenames
+    sometimes contain commas.
     """
     arg_string = "|".join(f"{k}={v}" for k, v in args.items())
-    cmd = [
-        str(fiji_path),
-        "--headless",
-        "--console",
-        "-macro",
-        str(macro_path),
-        arg_string,
-    ]
+    macro_path = str(macro_path)
+    if macro_path.lower().endswith(".bsh"):
+        # FIJI auto-detects script language from extension when a script
+        # path is passed positionally. The trailing argument lands in
+        # bsh.args[0].
+        cmd = [
+            str(fiji_path),
+            "--headless",
+            "--console",
+            macro_path,
+            arg_string,
+        ]
+    else:
+        cmd = [
+            str(fiji_path),
+            "--headless",
+            "--console",
+            "-macro",
+            macro_path,
+            arg_string,
+        ]
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout, check=False
     )

@@ -31,7 +31,6 @@ from glia_dash.pages import (
     explore as explore_page,
     export as export_page,
     features as features_page,
-    metadata as metadata_page,
     segment as segment_page,
     setup as setup_page,
     stats as stats_page,
@@ -57,7 +56,6 @@ TAB_DEFS = [
     ("setup",    "Setup"),
     ("segment",  "Segment"),
     ("features", "Features"),
-    ("metadata", "Metadata"),
     ("explore",  "Explore"),
     ("cluster",  "Cluster"),
     ("stats",    "Stats"),
@@ -254,7 +252,6 @@ _PAGE_LAYOUTS = {
     "setup":    setup_page.layout,
     "segment":  segment_page.layout,
     "features": features_page.layout,
-    "metadata": metadata_page.layout,
     "explore":  explore_page.layout,
     "cluster":  cluster_page.layout,
     "stats":    stats_page.layout,
@@ -327,8 +324,8 @@ def on_browse_project(n_clicks, sid, refresh):
     except Exception:
         pass
     # Rehydrate the features dataframe (with parsed metadata + any prior
-    # PCA / cluster assignments) so the user doesn't have to rerun the
-    # Features and Metadata tabs after reopening.
+    # PCA / cluster assignments) so the user doesn't have to rerun
+    # Features after reopening.
     try:
         from glia.features import load_features_df
         df_loaded = load_features_df(folder)
@@ -336,6 +333,14 @@ def on_browse_project(n_clicks, sid, refresh):
             state.features_df = df_loaded
             if "Cluster" in df_loaded.columns:
                 state.k = int(df_loaded["Cluster"].nunique())
+    except Exception:
+        pass
+    # Always re-broadcast the Prepare-tab metadata over the loaded
+    # features so any edits the user made to Animal/Genotype/Treatment
+    # after the last extraction take effect.
+    try:
+        from glia.metadata import ensure_metadata_joined
+        ensure_metadata_joined(state)
     except Exception:
         pass
     info = _project_info_block(folder)

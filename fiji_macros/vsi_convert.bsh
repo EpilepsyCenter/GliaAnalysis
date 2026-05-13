@@ -1,0 +1,176 @@
+// GliaAnalysis — Olympus VSI → ImageJ-hyperstack TIFF converter (Beanshell).
+//
+// Driven from glia.vsi_convert.ensure_vsi_converted. We use Beanshell + the
+// Bio-Formats Java API directly because:
+//   * `Bio-Formats Importer` (macro) throws HeadlessException in --headless
+//     (it constructs a Swing prompter on every load).
+//   * `Bio-Formats Exporter` NPEs when invoked headlessly via IJ.run().
+//
+// We open with BF.openImagePlus (no prompter), save with IJ.saveAsTiff
+// (writes ImageJ hyperstack metadata that bioio/tifffile read natively),
+// and emit a <stem>.tif.channels.json sidecar carrying the channel names
+// pulled from the OME metadata.
+//
+// Picks the highest-resolution series (skips the macro/label overview).
+// Cached by mtime in glia.vsi_convert.
+//
+// Args (pipe-delimited key=value, passed via bsh.args[0]):
+//   input_dir   — folder containing .vsi files
+//   output_dir  — destination for <stem>.tif + sidecar
+
+import ij.IJ;
+import ij.ImagePlus;
+import ij.io.FileSaver;
+import loci.formats.ImageReader;
+import loci.formats.MetadataTools;
+import loci.formats.meta.IMetadata;
+import loci.plugins.BF;
+import loci.plugins.in.ImporterOptions;
+import java.io.File;
+import java.io.FileWriter;
+
+String argString = bsh.args.length > 0 ? bsh.args[0] : "";
+if (argString == null || argString.length() == 0) {
+    IJ.log("vsi_convert.bsh: no arguments");
+    System.exit(0);
+}
+
+String inputDir  = "";
+String outputDir = "";
+String[] pairs = argString.split("\\|");
+for (int i = 0; i < pairs.length; i++) {
+    String[] kv = pairs[i].split("=", 2);
+    if (kv.length != 2) continue;
+    if      (kv[0].equals("input_dir"))  inputDir  = kv[1];
+    else if (kv[0].equals("output_dir")) outputDir = kv[1];
+}
+if (inputDir.length() == 0 || outputDir.length() == 0) {
+    IJ.log("vsi_convert.bsh: input_dir and output_dir required");
+    System.exit(0);
+}
+File outDirFile = new File(outputDir);
+outDirFile.mkdirs();
+
+IJ.log("=== vsi_convert.bsh ===");
+IJ.log("  input_dir  = " + inputDir);
+IJ.log("  output_dir = " + outputDir);
+
+File inDirFile = new File(inputDir);
+File[] files = inDirFile.listFiles();
+if (files != null) java.util.Arrays.sort(files);
+
+for (int fi = 0; fi < files.length; fi++) {
+    File src = files[fi];
+    String fname = src.getName();
+    if (!fname.toLowerCase().endsWith(".vsi")) continue;
+
+    String stem = fname.substring(0, fname.length() - 4);
+    File dst = new File(outDirFile, stem + ".tif");
+    File sidecar = new File(outDirFile, stem + ".tif.channels.json");
+
+    if (dst.exists() && dst.lastModified() >= src.lastModified()) {
+        IJ.log("[" + (fi + 1) + "/" + files.length + "] cached: " + fname);
+        continue;
+    }
+    IJ.log("[" + (fi + 1) + "/" + files.length + "] converting: " + fname);
+
+    // Step 1: pick the largest-XY series. VSI series 0 is usually the
+    // macro/label overview; the actual data lives in higher series.
+    ImageReader probe = new ImageReader();
+    IMetadata omeMeta = MetadataTools.createOMEXMLMetadata();
+    probe.setMetadataStore(omeMeta);
+    int bestSeries = 0;
+    long bestPixels = -1;
+    try {
+        probe.setId(src.getAbsolutePath());
+        int nSeries = probe.getSeriesCount();
+        for (int s = 0; s < nSeries; s++) {
+            probe.setSeries(s);
+            long px = (long) probe.getSizeX() * (long) probe.getSizeY();
+            if (px > bestPixels) {
+                bestPixels = px;
+                bestSeries = s;
+            }
+        }
+    } catch (Exception e) {
+        IJ.log("    probe failed: " + e.getMessage());
+        try { probe.close(); } catch (Exception ignore) {}
+        continue;
+    }
+
+    // Pull channel names from OME metadata for the chosen series. These
+    // survive into a sidecar JSON so the Prepare-table channel dropdown
+    // can show real names instead of generic "channel 0".
+    java.util.List channelNames = new java.util.ArrayList();
+    try {
+        probe.setSeries(bestSeries);
+        int sizeC = probe.getSizeC();
+        for (int c = 0; c < sizeC; c++) {
+            String name = null;
+            try { name = omeMeta.getChannelName(bestSeries, c); }
+            catch (Exception ignore) {}
+            if (name == null || name.length() == 0) name = "channel " + c;
+            channelNames.add(name);
+        }
+    } catch (Exception ignore) {}
+    try { probe.close(); } catch (Exception ignore) {}
+    IJ.log("    series " + bestSeries + " (" + bestPixels + " px) "
+           + "channels=" + channelNames);
+
+    // Step 2: open just that series via the headless-safe Java entry
+    // point. setSeriesOn() avoids the macro prompter completely.
+    ImporterOptions opts = new ImporterOptions();
+    opts.setId(src.getAbsolutePath());
+    opts.setOpenAllSeries(false);
+    opts.setSeriesOn(bestSeries, true);
+    opts.setAutoscale(false);
+    opts.setVirtual(false);
+    opts.setStackOrder(ImporterOptions.ORDER_XYCZT);
+    opts.setColorMode(ImporterOptions.COLOR_MODE_DEFAULT);
+
+    ImagePlus[] imps;
+    try {
+        imps = BF.openImagePlus(opts);
+    } catch (Exception e) {
+        IJ.log("    open failed: " + e.getMessage());
+        continue;
+    }
+    if (imps == null || imps.length == 0 || imps[0] == null) {
+        IJ.log("    open returned no images");
+        continue;
+    }
+    ImagePlus imp = imps[0];
+
+    // Step 3: save as an ImageJ hyperstack TIFF. FileSaver writes the
+    // dimension metadata that bioio's tifffile reader uses to
+    // reconstruct C / Z without needing OME-XML.
+    if (dst.exists()) dst.delete();
+    boolean ok = new FileSaver(imp).saveAsTiff(dst.getAbsolutePath());
+    imp.close();
+    if (!ok || !dst.exists()) {
+        IJ.log("    saveAsTiff produced no file");
+        continue;
+    }
+
+    // Step 4: sidecar JSON with channel names. Manual emit; we avoid
+    // pulling in a JSON library just for a flat string-list.
+    try {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"channel_names\":[");
+        for (int c = 0; c < channelNames.size(); c++) {
+            if (c > 0) sb.append(",");
+            String raw = (String) channelNames.get(c);
+            String esc = raw.replace("\\", "\\\\").replace("\"", "\\\"");
+            sb.append("\"").append(esc).append("\"");
+        }
+        sb.append("]}");
+        FileWriter w = new FileWriter(sidecar);
+        w.write(sb.toString());
+        w.close();
+    } catch (Exception e) {
+        IJ.log("    sidecar write failed: " + e.getMessage());
+    }
+}
+
+IJ.log("=== vsi_convert.bsh done ===");
+System.exit(0);

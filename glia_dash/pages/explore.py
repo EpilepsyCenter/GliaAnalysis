@@ -45,6 +45,11 @@ def _grouping_options(df: pd.DataFrame) -> list[dict]:
 
 def layout(sid: str | None) -> html.Div:
     state = server_state.get_session(sid)
+    # Re-broadcast the Prepare-tab metadata in case the user edited it
+    # after extracting features (or the persisted features.csv predates
+    # the metadata).
+    from glia.metadata import ensure_metadata_joined
+    ensure_metadata_joined(state)
     df = state.features_df
 
     if df is None or len(df) == 0:
@@ -66,7 +71,7 @@ def layout(sid: str | None) -> html.Div:
         html.Div(
             "Inspect per-feature distributions (optionally split by an "
             "experimental factor) and the Spearman correlation matrix of "
-            "all 27 features.",
+            "every numeric feature extracted.",
             style={"fontSize": "0.85rem",
                    "color": "var(--ned-text-muted)",
                    "marginBottom": "16px"},

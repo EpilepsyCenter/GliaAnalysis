@@ -56,6 +56,8 @@ def _theme_palette(theme: str) -> dict:
 
 def layout(sid: str | None) -> html.Div:
     state = server_state.get_session(sid)
+    from glia.metadata import ensure_metadata_joined
+    ensure_metadata_joined(state)
     df = state.features_df
 
     if df is None or len(df) == 0:
@@ -65,11 +67,28 @@ def layout(sid: str | None) -> html.Div:
                   variant="warning"),
         ])
 
+    return html.Div([
+        html.H4("Cluster", style={"marginBottom": "16px"}),
+        dbc.Tabs(
+            id="cluster-subtabs",
+            active_tab="cluster-tab-main",
+            class_name="dbc-page-tabs",
+            children=[
+                dbc.Tab(_clustering_subtab(state, df),
+                        label="Clustering",
+                        tab_id="cluster-tab-main"),
+                dbc.Tab(_overlays_subtab(state, df),
+                        label="Overlays",
+                        tab_id="cluster-tab-overlays"),
+            ],
+        ),
+    ])
+
+
+def _clustering_subtab(state, df: pd.DataFrame) -> html.Div:
     feats = _feature_columns(df)
     has_cluster = "Cluster" in df.columns
-
     return html.Div([
-        html.H4("Cluster", style={"marginBottom": "8px"}),
         html.Div(
             "StandardScaler → PCA → KMeans. Pick k by inspecting the "
             "elbow + silhouette scan; the four canonical morphology "
@@ -132,6 +151,147 @@ def layout(sid: str | None) -> html.Div:
                               style={"marginTop": "12px",
                                      "minHeight": "40px"}),
         ),
+    ])
+
+
+def _overlays_subtab(state, df: pd.DataFrame) -> html.Div:
+    """Image-by-image cluster overlay browser.
+
+    Mirrors the Soma tab pattern: scrollable file list on the left,
+    original image + cluster-colored overlay stacked on the right.
+    A "Download overlay PNG" button beneath the overlay exports the
+    composited image so it can be dropped into figures.
+
+    We always build the full UI (file list + store + graphs + download)
+    even when the features dataframe lacks a Cluster column, so that
+    the callbacks have valid Input / Output targets and the subtab can
+    re-populate live after the user runs PCA + cluster from the
+    Clustering tab. The "run PCA first" banner is just shown / hidden
+    by a separate callback that watches ``cluster-output``.
+    """
+    has_cluster = df is not None and "Cluster" in df.columns
+    images = _project_image_paths(state.project_dir)
+    current = state.extra.get("cluster_overlay_path", "")
+    if (not current or current not in images) and images:
+        current = images[0]
+        state.extra["cluster_overlay_path"] = current
+
+    return html.Div([
+        # Banner shown until the features dataframe has a Cluster column.
+        html.Div(
+            "Run PCA + cluster in the Clustering tab first; once each "
+            "cell has a cluster label, click an image on the left to "
+            "see its overlay.",
+            id="cluster-overlays-banner",
+            style={"display": "none" if has_cluster else "block",
+                   "fontSize": "0.82rem",
+                   "color": "var(--ned-text-muted)",
+                   "background": "rgba(56,189,248,0.08)",
+                   "border": "1px solid rgba(56,189,248,0.3)",
+                   "borderRadius": "6px",
+                   "padding": "8px 12px",
+                   "marginBottom": "12px"},
+        ),
+        html.Div(
+            "Each segmented cell in the image is colored by its "
+            "assigned cluster (palette matches the Clustering tab). "
+            "Pick an image on the left; the original is shown on top, "
+            "the overlay below. Use the download button to export the "
+            "overlay as a PNG.",
+            style={"fontSize": "0.85rem",
+                   "color": "var(--ned-text-muted)",
+                   "marginBottom": "16px"},
+        ),
+
+        html.Div([
+            html.Div(id="cluster-overlay-list",
+                     children=_render_overlay_file_list(images, current),
+                     style={"flex": "0 0 440px",
+                            "height": "880px",
+                            "overflowY": "auto",
+                            "border": "1px solid var(--ned-border)",
+                            "borderRadius": "6px",
+                            "marginRight": "12px",
+                            "background": "var(--ned-panel)"}),
+
+            html.Div([
+                html.Div(id="cluster-overlay-info",
+                         style={"display": "none",
+                                "fontSize": "0.82rem",
+                                "color": "var(--ned-text-muted)",
+                                "marginBottom": "8px"}),
+                html.Div(id="cluster-overlay-empty",
+                         children=[
+                             html.Div(
+                                 "Pick an image on the left to render "
+                                 "its cluster overlay.",
+                                 style={"fontSize": "0.85rem",
+                                        "color": "var(--ned-text-muted)",
+                                        "padding": "40px"},
+                             ),
+                         ]),
+                html.Div(id="cluster-overlay-graphs-col",
+                         style={"display": "none"},
+                         children=[
+                             dcc.Graph(
+                                 id="cluster-overlay-orig",
+                                 figure=go.Figure(),
+                                 config={"scrollZoom": True,
+                                         "displayModeBar": True,
+                                         "displaylogo": False,
+                                         "toImageButtonOptions": {
+                                             "format": "png",
+                                             "filename": "original",
+                                             "scale": 2,
+                                         },
+                                         "modeBarButtonsToRemove":
+                                             ["lasso2d", "select2d",
+                                              "autoScale2d"]},
+                                 style={"height": "440px",
+                                        "marginBottom": "12px"}),
+                             dcc.Graph(
+                                 id="cluster-overlay-img",
+                                 figure=go.Figure(),
+                                 config={"scrollZoom": True,
+                                         "displayModeBar": True,
+                                         "displaylogo": False,
+                                         "toImageButtonOptions": {
+                                             "format": "png",
+                                             "filename": "cluster_overlay",
+                                             "scale": 2,
+                                         },
+                                         "modeBarButtonsToRemove":
+                                             ["lasso2d", "select2d",
+                                              "autoScale2d"]},
+                                 style={"height": "440px"}),
+                             html.Div([
+                                 dbc.Button(
+                                     "Download overlay PNG",
+                                     id="cluster-overlay-download-btn",
+                                     className="btn-ned-secondary",
+                                     size="sm",
+                                 ),
+                                 html.Span(
+                                     "Saves a publication-ready PNG of "
+                                     "the colored overlay at the "
+                                     "image's native resolution. The "
+                                     "Plotly camera button on each "
+                                     "figure also works for quick "
+                                     "screenshots.",
+                                     style={"fontSize": "0.75rem",
+                                            "color":
+                                                "var(--ned-text-muted)",
+                                            "marginLeft": "12px"},
+                                 ),
+                             ], style={"marginTop": "8px",
+                                       "display": "flex",
+                                       "alignItems": "center"}),
+                             dcc.Download(id="cluster-overlay-download"),
+                         ]),
+            ], style={"flex": "1", "minWidth": "0"}),
+        ], style={"display": "flex", "alignItems": "flex-start"}),
+
+        dcc.Store(id="cluster-overlay-cell-store", data=current),
     ])
 
 
@@ -330,19 +490,6 @@ def _render_results(df, scan, scores, assignments, overrides,
                        "color": "var(--ned-text)"}),
         _build_label_table(df, scores, assignments, overrides, theme),
 
-        # Cluster overlay slot — populated on-demand by the chip-click
-        # callback so we don't pay the labeling cost up front.
-        html.H6("Overlay on original image",
-                style={"fontSize": "0.92rem",
-                       "marginTop": "20px",
-                       "marginBottom": "8px",
-                       "color": "var(--ned-text)"}),
-        html.Div(id="cluster-overlay-chips",
-                 style={"marginBottom": "10px"}),
-        dcc.Loading(type="default",
-                    children=html.Div(id="cluster-overlay-panel",
-                                      style={"minHeight": "20px"})),
-
         _interpretation_panel(),
     ])
 
@@ -354,8 +501,18 @@ _OUTPUT_SUBDIR = "_gliaanalysis"
 
 
 def _project_image_paths(project_dir: str) -> list[str]:
+    """Prepared TIFFs by default; legacy fall-through to top-level."""
     if not project_dir or not Path(project_dir).is_dir():
         return []
+    from glia.prepare import prepared_dir
+    prep = prepared_dir(project_dir)
+    if prep.is_dir():
+        prepared = sorted(
+            str(p) for p in prep.iterdir()
+            if p.suffix.lower() in (".tif", ".tiff") and p.is_file()
+        )
+        if prepared:
+            return prepared
     return sorted(str(p) for p in Path(project_dir).iterdir()
                   if p.suffix.lower() in (".tif", ".tiff") and p.is_file())
 
@@ -467,26 +624,53 @@ def _build_cluster_overlay(
     return fig_orig, fig_overlay, info
 
 
-def _render_overlay_chips(images: list[str], current: str) -> list:
+def _render_overlay_file_list(images: list[str], current: str) -> list:
+    """Vertical, scrollable list of project images (one per line)."""
     if not images:
-        return [html.Span("No project images on disk.",
-                          style={"fontSize": "0.82rem",
-                                 "color": "var(--ned-text-muted)"})]
+        return [html.Div(
+            "No project images on disk. Prepare images first.",
+            style={"fontSize": "0.82rem",
+                   "color": "var(--ned-text-muted)",
+                   "padding": "8px"})]
     return [
-        html.Span("Image:",
-                  style={"fontSize": "0.72rem",
-                         "color": "var(--ned-text-muted)",
-                         "textTransform": "uppercase",
-                         "letterSpacing": "0.5px",
-                         "marginRight": "8px"}),
-        *[html.Button(
-            os.path.basename(p),
-            id={"type": "cluster-overlay-chip", "path": p},
-            n_clicks=0,
-            className=("channel-chip selected" if p == current
-                       else "channel-chip"),
-            style={"marginRight": "4px"},
-        ) for p in images],
+        html.Div(
+            f"{len(images)} image{'s' if len(images) != 1 else ''}",
+            style={"fontSize": "0.72rem",
+                   "color": "var(--ned-text-muted)",
+                   "textTransform": "uppercase",
+                   "letterSpacing": "0.5px",
+                   "padding": "4px 8px",
+                   "borderBottom": "1px solid var(--ned-border)"},
+        ),
+        *[
+            html.Button(
+                Path(p).stem,
+                id={"type": "cluster-overlay-row", "path": p},
+                n_clicks=0,
+                className=("soma-cell-row selected"
+                           if p == current else "soma-cell-row"),
+                style={"display": "block",
+                       "width": "100%",
+                       "padding": "6px 10px",
+                       "border": "none",
+                       "borderBottom":
+                           "1px solid rgba(125, 133, 144, 0.12)",
+                       "textAlign": "left",
+                       "background": ("rgba(56, 139, 253, 0.18)"
+                                      if p == current
+                                      else "transparent"),
+                       "color": "var(--ned-text)",
+                       "fontSize": "0.78rem",
+                       "fontFamily":
+                           "IBM Plex Mono, ui-monospace, monospace",
+                       "cursor": "pointer",
+                       "whiteSpace": "nowrap",
+                       "overflow": "hidden",
+                       "textOverflow": "ellipsis"},
+                title=Path(p).name,
+            )
+            for p in images
+        ],
     ]
 
 
@@ -714,77 +898,209 @@ def on_label_override(values, theme, sid):
 
 
 @callback(
-    Output("cluster-overlay-chips", "children"),
-    Input("cluster-output", "children"),  # repopulate when a run finishes
+    Output("cluster-overlays-banner", "style"),
+    Input("cluster-output", "children"),
     State("session-id", "data"),
     prevent_initial_call=True,
 )
-def populate_overlay_chips(_children, sid):
+def hide_overlays_banner(_children, sid):
+    """When PCA + cluster has just run, the features dataframe now has
+    a Cluster column. Hide the warning banner so the Overlays subtab
+    becomes usable without reloading the page."""
     state = server_state.get_session(sid)
-    images = _project_image_paths(state.project_dir)
-    current = state.extra.get("cluster_overlay_path", "")
-    return _render_overlay_chips(images, current)
+    df = state.features_df
+    has_cluster = df is not None and "Cluster" in df.columns
+    return {"display": "none" if has_cluster else "block",
+            "fontSize": "0.82rem",
+            "color": "var(--ned-text-muted)",
+            "background": "rgba(56,189,248,0.08)",
+            "border": "1px solid rgba(56,189,248,0.3)",
+            "borderRadius": "6px",
+            "padding": "8px 12px",
+            "marginBottom": "12px"}
 
 
 @callback(
-    Output("cluster-overlay-panel", "children"),
-    Output("cluster-overlay-chips", "children", allow_duplicate=True),
-    Input({"type": "cluster-overlay-chip", "path": ALL}, "n_clicks"),
-    State("theme-store", "data"),
+    Output("cluster-overlay-cell-store", "data"),
+    Output("cluster-overlay-list", "children"),
+    Input({"type": "cluster-overlay-row", "path": ALL}, "n_clicks"),
     State("session-id", "data"),
     prevent_initial_call=True,
 )
-def on_overlay_chip(_clicks, theme, sid):
-    fired = any(n for n in (_clicks or []))
-    if not fired:
+def on_overlay_row_click(_clicks, sid):
+    """Clicking a file row updates the persistent store and re-renders
+    the list so the selected entry highlights."""
+    if not any(n for n in (_clicks or [])):
         return no_update, no_update
     trig = ctx.triggered_id
     if not isinstance(trig, dict) or "path" not in trig:
         return no_update, no_update
-    image_path = trig["path"]
+    path = trig["path"]
     state = server_state.get_session(sid)
-    state.extra["cluster_overlay_path"] = image_path
+    state.extra["cluster_overlay_path"] = path
+    images = _project_image_paths(state.project_dir)
+    return path, _render_overlay_file_list(images, path)
+
+
+_OVERLAY_OUTPUTS = (
+    Output("cluster-overlay-empty", "style"),
+    Output("cluster-overlay-info", "style"),
+    Output("cluster-overlay-graphs-col", "style"),
+    Output("cluster-overlay-info", "children"),
+    Output("cluster-overlay-orig", "figure"),
+    Output("cluster-overlay-img", "figure"),
+)
+
+
+def _hide_overlay(message: str | None = None):
+    return (
+        {"display": "block"},
+        {"display": "none"},
+        {"display": "none"},
+        message or "",
+        go.Figure(), go.Figure(),
+    )
+
+
+@callback(
+    *_OVERLAY_OUTPUTS,
+    Input("cluster-overlay-cell-store", "data"),
+    Input("theme-store", "data"),
+    Input("cluster-output", "children"),
+    State("session-id", "data"),
+    prevent_initial_call=True,
+)
+def render_overlay(path, theme, _cluster_output, sid):
+    if not path:
+        return _hide_overlay()
+    state = server_state.get_session(sid)
     df = state.features_df
     if df is None or "Cluster" not in df.columns:
-        return alert("Run PCA + cluster first.", variant="warning"), no_update
+        return _hide_overlay("Run PCA + cluster in the Clustering "
+                             "tab first.")
     rois = state.extra.get("rois", {})
-    fig_orig, fig_overlay, info = _build_cluster_overlay(
-        image_path, state.project_dir, rois, df, theme,
-    )
-    chips = _render_overlay_chips(
-        _project_image_paths(state.project_dir), image_path,
-    )
-    info_line = html.Div(
-        f"Matched {info.get('matched', 0):,} cells "
-        f"({info.get('unmatched', 0):,} unmatched). "
-        f"Clusters present in this image: "
-        f"{', '.join(map(str, info.get('clusters_present', [])))}.",
-        style={"fontSize": "0.78rem",
-               "color": "var(--ned-text-muted)",
-               "marginBottom": "8px"},
-    )
+    try:
+        fig_orig, fig_overlay, info = _build_cluster_overlay(
+            path, state.project_dir, rois, df, theme,
+        )
+    except Exception as e:
+        return _hide_overlay(f"Overlay rendering failed: {e}")
     if "error" in info:
-        return alert(info["error"], variant="danger"), chips
-    panel = html.Div([
-        info_line,
-        html.Div([
-            dcc.Graph(figure=fig_orig,
-                      config={"scrollZoom": True,
-                              "displayModeBar": True,
-                              "displaylogo": False,
-                              "modeBarButtonsToRemove":
-                                  ["lasso2d", "select2d", "autoScale2d"]},
-                      style={"flex": "1", "height": "520px",
-                             "minWidth": "0"}),
-            dcc.Graph(figure=fig_overlay,
-                      config={"scrollZoom": True,
-                              "displayModeBar": True,
-                              "displaylogo": False,
-                              "modeBarButtonsToRemove":
-                                  ["lasso2d", "select2d", "autoScale2d"]},
-                      style={"flex": "1", "height": "520px",
-                             "minWidth": "0",
-                             "marginLeft": "12px"}),
-        ], style={"display": "flex"}),
-    ])
-    return panel, chips
+        return _hide_overlay(info["error"])
+
+    info_text = (
+        f"{Path(path).name} · matched {info.get('matched', 0):,} cells"
+        f" ({info.get('unmatched', 0):,} unmatched)"
+        f" · clusters present: "
+        f"{', '.join(map(str, info.get('clusters_present', [])))}"
+    )
+
+    return (
+        {"display": "none"},
+        {"display": "block", "fontSize": "0.82rem",
+         "color": "var(--ned-text-muted)", "marginBottom": "8px"},
+        {"display": "block"},
+        info_text,
+        fig_orig, fig_overlay,
+    )
+
+
+@callback(
+    Output("cluster-overlay-download", "data"),
+    Input("cluster-overlay-download-btn", "n_clicks"),
+    State("cluster-overlay-cell-store", "data"),
+    State("theme-store", "data"),
+    State("session-id", "data"),
+    prevent_initial_call=True,
+)
+def on_overlay_download(n_clicks, path, theme, sid):
+    """Composite the cluster overlay into a PNG and stream it back.
+
+    We re-build the overlay at native image resolution (no Plotly
+    chrome) so the saved file is publication-ready. The figure already
+    holds the same RGB array via px.imshow, but going straight from the
+    composite numpy array → PIL → PNG bytes is simpler and produces a
+    crisper output than re-rendering the figure.
+    """
+    if not n_clicks or not path:
+        return no_update
+    state = server_state.get_session(sid)
+    df = state.features_df
+    if df is None or "Cluster" not in df.columns:
+        return no_update
+    rgb = _composite_overlay_rgb(
+        path, state.project_dir, state.extra.get("rois", {}), df,
+    )
+    if rgb is None:
+        return no_update
+    from io import BytesIO
+    from PIL import Image
+    buf = BytesIO()
+    Image.fromarray(rgb).save(buf, format="PNG", optimize=True)
+    buf.seek(0)
+    filename = Path(path).stem + "__cluster_overlay.png"
+    return dcc.send_bytes(buf.getvalue(), filename)
+
+
+def _composite_overlay_rgb(
+    image_path: str, project_dir: str, rois_by_path: dict,
+    df: pd.DataFrame,
+) -> np.ndarray | None:
+    """Re-build the RGB composite used by _build_cluster_overlay,
+    without the Plotly figure wrapping. Returns ``None`` if the
+    thresholded image isn't available.
+    """
+    p = _theme_palette("light")  # palette is fixed regardless of theme
+    img = tifffile.imread(image_path)
+    th_path = _thresholded_path(project_dir, image_path)
+    if not th_path.exists():
+        return None
+    binary = tifffile.imread(th_path) > 0
+    h, w = binary.shape
+
+    image_stem = Path(image_path).stem
+    image_rois = rois_by_path.get(image_path, [])
+    if image_rois:
+        passes = per_roi_masks(image_rois, h, w)
+    else:
+        passes = [(DEFAULT_ROI_TAG, np.ones((h, w), dtype=bool))]
+
+    overlay = np.zeros((h, w, 4), dtype=np.uint8)
+    df_image = df[df["ID"].str.startswith(image_stem + "__")]
+    id_to_cluster = dict(zip(df_image["ID"], df_image["Cluster"]))
+
+    def hex_to_rgb(h_):
+        h_ = h_.lstrip("#")
+        return (int(h_[0:2], 16), int(h_[2:4], 16), int(h_[4:6], 16))
+
+    for tag, roi_arr in passes:
+        roi_binary = binary & roi_arr
+        if not roi_binary.any():
+            continue
+        labels = measure.label(roi_binary, connectivity=1)
+        for rp in measure.regionprops(labels):
+            cell_id = f"{image_stem}__{tag}__{rp.label}"
+            cluster = id_to_cluster.get(cell_id)
+            if cluster is None:
+                continue
+            r, g, b = hex_to_rgb(
+                p["colorway"][int(cluster) % len(p["colorway"])]
+            )
+            pixel_mask = (labels == rp.label)
+            overlay[pixel_mask, 0] = r
+            overlay[pixel_mask, 1] = g
+            overlay[pixel_mask, 2] = b
+            overlay[pixel_mask, 3] = 255
+
+    # Normalize the base to 0-255 if needed (e.g. uint16 source).
+    if img.dtype != np.uint8:
+        base = img.astype(np.float32)
+        base = (base - base.min()) / max(base.ptp(), 1)
+        base = (base * 255).clip(0, 255).astype(np.uint8)
+    else:
+        base = img
+    base_rgb = np.repeat(base[..., None], 3, axis=-1)
+    base_rgb = (base_rgb.astype(np.float32) * 0.6).clip(0, 255).astype(np.uint8)
+    alpha = overlay[..., 3:4].astype(np.float32) / 255.0
+    rgb = (base_rgb * (1 - alpha) + overlay[..., :3] * alpha).astype(np.uint8)
+    return rgb

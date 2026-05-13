@@ -339,11 +339,13 @@ ul.nav-tabs .nav-link.active {
 
 /* ── Form controls (dark theme — underline style) ─────────────────── */
 
-/* The actual <input> element */
+/* The actual <input> element. dcc.Dropdown renders its own React widget
+   (not a native <select>), so we DON'T style raw <select> here — that
+   only ever hit the DataTable's per-cell native dropdowns and made them
+   invisible/unclickable. */
 input[type="number"],
 input[type="text"],
 textarea,
-select,
 .form-select {
     background-color: transparent !important;
     border: none !important;
@@ -354,6 +356,51 @@ select,
     padding: 4px 4px 3px !important;
     transition: border-color var(--ned-transition) !important;
     text-align: center !important;
+}
+/* But the DataTable's text inputs (filter / editable cells) DO get back
+   their native border / padding so they remain visible. */
+.dash-table-container input[type="text"],
+.dash-table-container input[type="number"] {
+    border: 1px solid var(--ned-border) !important;
+    border-radius: 4px !important;
+    padding: 4px 6px !important;
+    text-align: left !important;
+}
+
+/* ── dash_table.DataTable per-cell dropdown (react-select) ──────────
+   The table's editable Dropdown columns render through react-select with
+   .Select-* classes, distinct from dcc.Dropdown. Without these rules the
+   menu opens but is invisible (white on white). */
+.dash-table-container .Select-control {
+    background-color: var(--ned-surface) !important;
+    border-color: var(--ned-border) !important;
+    color: var(--ned-text) !important;
+}
+.dash-table-container .Select-menu-outer {
+    background-color: var(--ned-surface) !important;
+    border-color: var(--ned-border) !important;
+    color: var(--ned-text) !important;
+    z-index: 1000 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18) !important;
+}
+.dash-table-container .Select-option {
+    background-color: var(--ned-surface) !important;
+    color: var(--ned-text) !important;
+}
+.dash-table-container .Select-option.is-focused,
+.dash-table-container .Select-option:hover {
+    background-color: var(--ned-surface-hover) !important;
+}
+.dash-table-container .Select-option.is-selected {
+    background-color: rgba(9, 105, 218, 0.12) !important;
+    color: var(--ned-accent) !important;
+}
+.dash-table-container .Select-value-label,
+.dash-table-container .Select-placeholder {
+    color: var(--ned-text) !important;
+}
+.dash-table-container .Select-arrow-zone .Select-arrow {
+    border-color: var(--ned-text-muted) transparent transparent !important;
 }
 
 input[type="number"]:focus,
@@ -707,7 +754,24 @@ p, span, div, h1, h2, h3, h4, h5, h6 {
     border-color: var(--ned-text-muted);
 }
 
-/* ── AG Grid dark theme ────────────────────────────────────────────── */
+/* ── AG Grid (dash-ag-grid) theming ────────────────────────────────── */
+
+.ag-theme-alpine-dark .ag-list-item,
+.ag-theme-alpine-dark .ag-popup,
+.ag-theme-alpine-dark .ag-select-list,
+.ag-theme-alpine-dark .ag-rich-select-list,
+.ag-theme-alpine-dark .ag-popup-child {
+    background-color: var(--ned-surface) !important;
+    color: var(--ned-text) !important;
+    z-index: 9000 !important;
+}
+.ag-theme-alpine-dark .ag-list-item.ag-active-item,
+.ag-theme-alpine-dark .ag-list-item:hover,
+.ag-theme-alpine-dark .ag-rich-select-row.ag-row-hover {
+    background-color: var(--ned-surface-hover) !important;
+}
+
+/* ── AG Grid dark theme overrides for our palette ──────────────────── */
 
 .ag-theme-alpine-dark {
     --ag-background-color: var(--ned-surface) !important;

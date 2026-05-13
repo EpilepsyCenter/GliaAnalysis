@@ -34,6 +34,13 @@ class SessionState:
     area_min: float = 0.0
     area_max: float = 0.0
 
+    # Setup — soma (radial soma + Sholl analysis)
+    soma_gap_tol_deg: float = 20.0
+    # Optional: use the DAPI nucleus centroid as the radial scan center.
+    # Off by default; opt-in per project. When the DAPI signal is poor
+    # the user can leave this off and stay on the EDT-peak fallback.
+    use_dapi: bool = False
+
     # Data
     features_df: Any = None               # cell-level 27-feature dataframe
     metadata_cols: list = field(default_factory=list)

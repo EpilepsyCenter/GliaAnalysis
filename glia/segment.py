@@ -50,6 +50,12 @@ class SegmentParams:
     # rois maps absolute image path -> list of ROI dicts (each with tag,
     # type, shape). Pass {} (default) to process whole-image with tag "all".
     rois: dict = field(default_factory=dict)
+    # Optional parallel directory of DAPI / nucleus-channel grayscale TIFFs.
+    # Filenames must match the prepared cell-channel TIFFs (same stems).
+    # When set, single-cell extraction also crops the DAPI image at each
+    # cell's bbox and writes a sibling ``<cell_id>__dapi.tif`` so the
+    # downstream radial analysis can seed its center on the nucleus.
+    dapi_dir: Path | None = None
 
     def fiji_args(self) -> dict:
         return {
@@ -124,6 +130,7 @@ def extract_single_cells(
     area_max: float,
     input_dir: Path | None = None,
     rois: dict | None = None,
+    dapi_dir: Path | None = None,
 ) -> tuple[int, list[str]]:
     """Read every thresholded TIFF, label foreground components, and save
     each cell whose pixel area falls in (area_min, area_max) as a cropped
@@ -158,6 +165,34 @@ def extract_single_cells(
                        if input_dir is not None else "")
         image_rois = rois.get(source_path, []) if source_path else []
 
+        # Match a parallel DAPI image by stem if one was supplied. We
+        # apply a single global Otsu threshold to the full DAPI image
+        # here — not per-crop later — so faint cells don't get noise-
+        # thresholded into spurious centroids. The sibling file written
+        # below is therefore a binary mask, and downstream
+        # ``dapi_centroid`` just takes the centroid of the largest
+        # surviving connected component.
+        #
+        # Shape mismatch (channel registration off) silently disables
+        # DAPI for this image — better than producing wrong centers.
+        dapi_binary = None
+        if dapi_dir is not None:
+            for ext in (".tif", ".tiff"):
+                candidate = Path(dapi_dir) / f"{stem}{ext}"
+                if candidate.is_file():
+                    try:
+                        di = tifffile.imread(candidate)
+                        if di.shape[:2] == (h, w):
+                            from skimage.filters import threshold_otsu
+                            try:
+                                t = float(threshold_otsu(di))
+                                dapi_binary = (di > t).astype(np.uint8) * 255
+                            except Exception:
+                                dapi_binary = None
+                    except Exception:
+                        pass
+                    break
+
         if image_rois:
             passes = per_roi_masks(image_rois, h, w)
         else:
@@ -179,6 +214,11 @@ def extract_single_cells(
                 crop = (mask.astype(np.uint8)) * 255
                 cell_id = f"{stem}__{tag}__{rp.label}"
                 tifffile.imwrite(cells_dir / f"{cell_id}.tif", crop)
+                if dapi_binary is not None:
+                    dapi_crop = dapi_binary[r0:r1, c0:c1]
+                    tifffile.imwrite(
+                        cells_dir / f"{cell_id}__dapi.tif", dapi_crop,
+                    )
                 n_total += 1
     return n_total, skipped
 
@@ -237,6 +277,7 @@ def run_pipeline(params: SegmentParams) -> SegmentReport:
         params.area_min, params.area_max,
         input_dir=params.input_dir,
         rois=params.rois,
+        dapi_dir=params.dapi_dir,
     )
     report.n_single_cells = n_cells
     report.skipped.extend(skipped)

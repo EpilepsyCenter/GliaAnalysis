@@ -17,8 +17,18 @@ UI. Callers swallow errors.
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
+
+
+# Single process-wide lock guarding read-modify-write of the project
+# settings JSON. Dash callbacks run in a thread pool, so two writers
+# (e.g. on_table_edit committing a tag edit and a slider mirror writing
+# the gap tolerance) can both load the same baseline, modify different
+# keys, and the later writer overwrites the earlier one. Serializing
+# the read-modify-write step removes that race.
+_SETTINGS_FILE_LOCK = threading.Lock()
 
 
 PROJECT_SETTINGS_FILENAME = ".gliaanalysis_settings.json"
@@ -43,6 +53,8 @@ _PROJECT_FIELDS = (
     "transform",
     "animal_id_col",
     "factor_cols",
+    "soma_gap_tol_deg",
+    "use_dapi",
 )
 
 # State fields that live on SessionState and belong in the user file.
@@ -65,14 +77,29 @@ def _state_to_project_dict(state) -> dict:
 
 
 def save_project_settings(project_dir: str, state) -> str | None:
-    """Write a snapshot of the project-scoped state fields to JSON."""
+    """Write a snapshot of the project-scoped state fields to JSON.
+
+    Merges into the existing JSON rather than overwriting it, so keys
+    that don't live on ``SessionState`` (notably ``image_metadata``,
+    updated by a sibling write path) survive every slider tweak.
+
+    The whole read-modify-write block is serialized under
+    ``_SETTINGS_FILE_LOCK`` so a concurrent ``set_image_metadata``
+    write can't race past us between load and write.
+    """
     if not project_dir or not Path(project_dir).is_dir():
         return None
     path = Path(project_dir) / PROJECT_SETTINGS_FILENAME
-    try:
-        path.write_text(json.dumps(_state_to_project_dict(state), indent=2))
-    except Exception:
-        return None
+    with _SETTINGS_FILE_LOCK:
+        try:
+            existing = load_project_settings(project_dir)
+        except Exception:
+            existing = {}
+        merged = {**existing, **_state_to_project_dict(state)}
+        try:
+            path.write_text(json.dumps(merged, indent=2))
+        except Exception:
+            return None
     return str(path)
 
 
@@ -140,3 +167,69 @@ def apply_user_settings(state, settings: dict) -> None:
                 setattr(state, name, settings[name])
             except Exception:
                 pass
+
+
+# ── Per-image metadata table ────────────────────────────────────────
+#
+# Lives inside the same .gliaanalysis_settings.json under the key
+# ``image_metadata``. Schema is a list of rows; each row has at least an
+# ``image`` (filename, basename only) key plus whatever user-defined
+# columns. ``prepare_channel`` and ``prepare_z`` are optional per-image
+# overrides for the Prepare step.
+
+
+_IMAGE_METADATA_KEY = "image_metadata"
+
+
+def get_image_metadata(project_dir: str) -> list[dict]:
+    raw = list(load_project_settings(project_dir).get(
+        _IMAGE_METADATA_KEY, []
+    ))
+    # Defensive: filter any private/internal keys that might have been
+    # persisted by an older build (e.g. ``_channel_options``).
+    return [
+        {k: v for k, v in r.items() if not str(k).startswith("_")}
+        for r in raw
+    ]
+
+
+def set_image_metadata(project_dir: str, rows: list[dict]) -> str | None:
+    """Replace the project's image-metadata table on disk.
+
+    Strips internal/private keys (anything beginning with ``_``) so that
+    UI-only state — like the per-row dropdown options the Prepare table
+    keeps under ``_channel_options`` — doesn't leak into the persisted
+    metadata and then onto every cell's row in features_df.
+
+    Serialized under ``_SETTINGS_FILE_LOCK`` so a concurrent
+    ``save_project_settings`` can't race past us between load and write.
+    """
+    if not project_dir or not Path(project_dir).is_dir():
+        return None
+    clean: list[dict] = []
+    for r in rows or []:
+        clean.append({k: v for k, v in r.items() if not str(k).startswith("_")})
+    path = Path(project_dir) / PROJECT_SETTINGS_FILENAME
+    with _SETTINGS_FILE_LOCK:
+        settings = load_project_settings(project_dir)
+        settings[_IMAGE_METADATA_KEY] = clean
+        settings.setdefault("version", 1)
+        try:
+            path.write_text(json.dumps(settings, indent=2))
+        except Exception:
+            return None
+    return str(path)
+
+
+def upsert_image_metadata_row(
+    project_dir: str, image: str, fields: dict,
+) -> None:
+    """Merge ``fields`` into the row for ``image``, appending if absent."""
+    rows = get_image_metadata(project_dir)
+    for r in rows:
+        if r.get("image") == image:
+            r.update(fields)
+            break
+    else:
+        rows.append({"image": image, **fields})
+    set_image_metadata(project_dir, rows)

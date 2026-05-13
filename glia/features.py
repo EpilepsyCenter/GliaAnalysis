@@ -23,7 +23,13 @@ from scipy.spatial import ConvexHull
 from skimage import measure
 from skimage.segmentation import find_boundaries
 
-from glia.config import FRACLAC_FEATURES, SKELETON_FEATURES
+from glia.config import (
+    FRACLAC_FEATURES,
+    SHOLL_FEATURES,
+    SKELETON_FEATURES,
+    SOMA_FEATURES,
+)
+from glia.radial import RadialResult, analyze_radial, dapi_centroid
 
 
 @dataclass
@@ -260,13 +266,74 @@ def features_to_row(feats: GeometricFeatures, cell_id: str) -> dict:
     return {"ID": cell_id, **{field_map[k]: v for k, v in d.items()}}
 
 
-def extract_features_from_dir(single_cells_dir: Path) -> pd.DataFrame:
-    """Iterate every single-cell .tif in a directory, return one row per cell."""
+def radial_to_row(res: RadialResult) -> dict:
+    """Map RadialResult scalar fields to the 9 SOMA + SHOLL column names."""
+    return {
+        "Soma area": float(res.soma_area),
+        "Soma perimeter": float(res.soma_perimeter),
+        "Soma circularity": float(res.soma_circularity),
+        "Soma:cell area ratio": float(res.soma_to_cell_area_ratio),
+        "Primary process count": int(res.primary_process_count),
+        "Critical radius": float(res.critical_radius),
+        "Max process extent": float(res.max_process_extent),
+        "Max Sholl intersections": int(res.max_intersections),
+        "Ramification index": float(res.ramification_index),
+    }
+
+
+def _nan_radial_row() -> dict:
+    """Fallback for cells where the radial scan raised (e.g. empty mask)."""
+    out = {name: float("nan") for name in SOMA_FEATURES + SHOLL_FEATURES}
+    # Counts stay as NaN-compatible floats; pandas widens the column either way.
+    return out
+
+
+def _dapi_sibling_path(cell_tif: Path) -> Path:
+    """Sibling DAPI crop path convention: ``<cell_id>__dapi.tif``."""
+    return cell_tif.with_name(cell_tif.stem + "__dapi.tif")
+
+
+def extract_features_from_dir(
+    single_cells_dir: Path, *, gap_tol_deg: float = 20.0,
+) -> pd.DataFrame:
+    """Iterate every single-cell .tif in a directory, return one row per cell.
+
+    Each row carries the 18 FracLac-equivalent geometric features plus the
+    9 radial soma+Sholl features (``SOMA_FEATURES + SHOLL_FEATURES``). The
+    skeleton features are merged separately by ``load_skeleton_results``.
+
+    If a sibling DAPI crop (``<cell_id>__dapi.tif``) exists next to the
+    cell mask, its brightest-nucleus centroid is used as the radial scan
+    center; otherwise the scan falls back to the cell mask's EDT peak.
+    """
     rows = []
     for tif in sorted(Path(single_cells_dir).glob("*.tif")):
+        if tif.stem.endswith("__dapi"):
+            continue  # skip DAPI siblings — handled per-cell below
         mask = tifffile.imread(tif) > 0
         feats = compute_geometric_features(mask)
-        rows.append(features_to_row(feats, cell_id=tif.stem))
+        row = features_to_row(feats, cell_id=tif.stem)
+
+        center_yx = None
+        center_source = "edt"
+        dapi_path = _dapi_sibling_path(tif)
+        if dapi_path.is_file():
+            try:
+                dapi_img = tifffile.imread(dapi_path)
+                center_yx = dapi_centroid(dapi_img, cell_mask=mask)
+                if center_yx is not None:
+                    center_source = "dapi"
+            except Exception:
+                center_yx = None
+
+        try:
+            res = analyze_radial(mask, gap_tol_deg=gap_tol_deg,
+                                 center_yx=center_yx)
+            row.update(radial_to_row(res))
+        except Exception:
+            row.update(_nan_radial_row())
+        row["center_source"] = center_source
+        rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -338,7 +405,9 @@ def load_skeleton_results(skeleton_dir: Path) -> pd.DataFrame:
 def merge_geometric_and_skeleton(
     geom: pd.DataFrame, skel: pd.DataFrame
 ) -> pd.DataFrame:
-    """Inner-join on cell ID, return the full 27-feature cell-level table."""
+    """Inner-join on cell ID. ``geom`` already carries the 18 geometric +
+    9 radial (soma + Sholl) columns; ``skel`` adds the 9 AnalyzeSkeleton
+    columns, yielding the full 36-feature cell-level table."""
     return geom.merge(skel, on="ID", how="inner")
 
 

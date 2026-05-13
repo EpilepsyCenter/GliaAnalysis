@@ -142,6 +142,8 @@ def _datatable(rows_df, table_id):
 
 def layout(sid: str | None) -> html.Div:
     state = server_state.get_session(sid)
+    from glia.metadata import ensure_metadata_joined
+    ensure_metadata_joined(state)
     df = state.features_df
     if df is None or len(df) == 0:
         return html.Div([

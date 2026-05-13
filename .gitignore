@@ -29,3 +29,7 @@ SkeletonImages/
 .gliaanalysis_rois.json
 .gliaanalysis_settings.json
 _gliaanalysis/
+
+# Local sample datasets and prototype render artifacts
+sample_images/
+scripts/_radial_proto_out/

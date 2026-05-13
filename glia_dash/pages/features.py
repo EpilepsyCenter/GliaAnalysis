@@ -245,7 +245,10 @@ def on_extract(n_clicks, sid):
 
     t0 = time.time()
     try:
-        geom = extract_features_from_dir(cells_dir)
+        geom = extract_features_from_dir(
+            cells_dir,
+            gap_tol_deg=float(getattr(state, "soma_gap_tol_deg", 20.0)),
+        )
     except Exception as e:
         return alert(f"Geometric feature extraction failed: {e}",
                      variant="danger")
@@ -258,6 +261,18 @@ def on_extract(n_clicks, sid):
             return alert(f"Skeleton join failed: {e}", variant="danger")
     else:
         df = geom
+
+    # Auto-join per-image metadata set in Setup → Prepare so downstream
+    # tabs (Explore, Cluster, Stats) immediately see Animal/Genotype/
+    # Treatment/... as grouping columns. No separate Metadata tab.
+    try:
+        from glia.metadata import join_project_image_metadata
+        from glia.settings import get_image_metadata
+        df = join_project_image_metadata(
+            df, get_image_metadata(state.project_dir),
+        )
+    except Exception:
+        pass
 
     dt = time.time() - t0
     state.features_df = df
