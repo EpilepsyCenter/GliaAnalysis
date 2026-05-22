@@ -1,9 +1,15 @@
 // GliaAnalysis — headless threshold-only macro
 //
 // Thresholds every TIFF in input_dir using the same chain as
-// MicrogliaMorphology_Program.ijm (Enhance Contrast 0.35 → Unsharp Mask r=3
-// m=0.6 → Despeckle → Auto/Local Threshold → Despeckle → Close- → Remove
+// MicrogliaMorphology_Program.ijm (Enhance Contrast 0.35 normalize → Unsharp
+// Mask r=3 m=0.6 → Despeckle → threshold → Despeckle → Close- → Remove
 // Outliers r=2 t=50). Writes results to output_dir/.
+//
+// Threshold step:
+//   * local  → Auto Local Threshold (per-pixel, method-driven).
+//   * global → apply the [manual_lower, manual_upper] band chosen via the
+//     Setup-tab slider (auto methods only seed that slider in the preview),
+//     so the saved mask matches the in-app preview exactly.
 //
 // Required args (pipe-delimited key=value via getArgument()):
 //   input_dir, output_dir, threshold_kind, threshold_method,
@@ -65,22 +71,31 @@ for (i = 0; i < inputs.length; i++) {
     run("8-bit");
     run("Grays");
     if (preprocess == 1) {
-        run("Enhance Contrast", "saturated=0.35");
+        // "Enhance Contrast..." WITH normalize actually rewrites pixel
+        // values (0.35% saturated → linear stretch to 0–255). The plain
+        // "Enhance Contrast" without normalize only changes the display
+        // range, leaving pixels untouched — which made the auto threshold
+        // sit lower than the in-app preview (skimage rescale_intensity at
+        // the 0.175/99.825 percentiles). normalize keeps the two in sync.
+        run("Enhance Contrast...", "saturated=0.35 normalize");
         run("Unsharp Mask...", "radius=3 mask=0.60");
         run("Despeckle");
     }
-    if (threshold_kind == "manual") {
-        setThreshold(manual_lower, manual_upper);
-        setOption("BlackBackground", true);
-        run("Convert to Mask");
-    } else if (threshold_kind == "local") {
+    if (threshold_kind == "local") {
         run("Auto Local Threshold",
             "method=" + threshold_method
           + " radius=" + local_radius
           + " parameter_1=0 parameter_2=0 white");
     } else {
-        run("Auto Threshold",
-            "method=" + threshold_method + " ignore_black white");
+        // Global (and legacy "manual"): apply the [manual_lower, manual_upper]
+        // band chosen in the Setup tab. The auto method (Otsu, Li, …) only
+        // SEEDS the slider's lower bound in the in-app preview; the band is
+        // the actual cut the preview displays. Applying the same band here
+        // makes the saved mask match the Setup preview 1:1, instead of
+        // re-running a fresh auto threshold that ignored the user's slider.
+        setThreshold(manual_lower, manual_upper);
+        setOption("BlackBackground", true);
+        run("Convert to Mask");
     }
     run("Despeckle");
     run("Close-");
