@@ -59,6 +59,32 @@ def run_headless(
     )
 
 
+def validate_fiji_path(fiji_path: str | Path | None) -> str | None:
+    """Return a human-readable error if ``fiji_path`` can't be launched.
+
+    Returns ``None`` when the path looks runnable. The common Windows
+    mistake is pointing at the ``Fiji.app`` *folder* rather than the
+    executable inside it: ``Path.exists()`` is True for a directory, so
+    naive checks pass and ``subprocess.run`` then dies with
+    ``WinError 5: Access is denied``. We catch that here with a clear hint.
+    """
+    if not fiji_path:
+        return ("No FIJI path configured. Set it to the FIJI executable in "
+                "the Setup tab.")
+    p = Path(fiji_path)
+    if not p.exists():
+        return f"FIJI executable not found: {fiji_path}"
+    if p.is_dir():
+        return (
+            f"FIJI path points to a folder, not the executable: {fiji_path}\n"
+            "Point it at the program file inside the Fiji folder — on Windows "
+            r"that's ...\Fiji.app\ImageJ-win64.exe (or fiji-windows-x64.exe on "
+            "newer builds); on macOS it's "
+            ".../Fiji.app/Contents/MacOS/ImageJ-macosx."
+        )
+    return None
+
+
 def discover_fiji() -> str | None:
     """Best-effort lookup of FIJI on disk. Returns None if not found."""
     candidates = [

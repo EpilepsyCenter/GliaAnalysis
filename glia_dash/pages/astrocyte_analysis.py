@@ -31,6 +31,7 @@ from glia.astrocyte import (
     save_astrocyte_features_df,
 )
 from glia.config import ASTROCYTE_FEATURES
+from glia.fiji_runner import validate_fiji_path
 from glia.settings import get_image_metadata
 from glia_dash import server_state
 from glia_dash.components import alert, empty_state, metric_card
@@ -279,10 +280,10 @@ def on_threshold(n_clicks, sid):
     project = state.project_dir
     if not project or not Path(project).is_dir():
         return alert("No project folder loaded.", variant="warning")
-    if not state.fiji_path or not Path(state.fiji_path).exists():
+    fiji_err = validate_fiji_path(state.fiji_path)
+    if fiji_err:
         return alert(
-            f"FIJI not found at {state.fiji_path!r}. Configure it in "
-            "Setup → Threshold.",
+            f"{fiji_err}\nConfigure it in Setup → Threshold.",
             variant="warning",
         )
 

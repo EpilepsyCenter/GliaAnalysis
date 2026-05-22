@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from glia.fiji_runner import run_headless
+from glia.fiji_runner import run_headless, validate_fiji_path
 
 
 _CONVERTED_SUBDIR = Path("_gliaanalysis") / "Converted"
@@ -168,11 +168,9 @@ def ensure_vsi_converted(
     if not pending:
         return rep
 
-    if not fiji_path or not Path(fiji_path).exists():
-        rep.errors.append(
-            "FIJI is not configured — set the FIJI path in Setup before "
-            "loading VSI files."
-        )
+    fiji_err = validate_fiji_path(fiji_path)
+    if fiji_err:
+        rep.errors.append(f"{fiji_err} (needed to convert VSI files.)")
         return rep
     if not _MACRO_PATH.exists():
         rep.errors.append(f"VSI macro missing at {_MACRO_PATH}.")
@@ -184,9 +182,12 @@ def ensure_vsi_converted(
     # Macro iterates the whole input_dir; cached files are skipped inside
     # the macro by mtime, matching needs_conversion() above.
     try:
+        # Forward-slash paths: the ImageJ macro language treats backslash as
+        # an escape char, so native Windows paths (C:\Users\…) get mangled.
         proc = run_headless(
             fiji_path, _MACRO_PATH,
-            {"input_dir": project_dir, "output_dir": str(out_dir)},
+            {"input_dir": Path(project_dir).as_posix(),
+             "output_dir": out_dir.as_posix()},
             timeout=timeout,
         )
     except Exception as e:

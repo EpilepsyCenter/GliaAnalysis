@@ -21,7 +21,7 @@ import numpy as np
 import tifffile
 from skimage import measure
 
-from glia.fiji_runner import run_headless
+from glia.fiji_runner import run_headless, validate_fiji_path
 from glia.roi import per_roi_masks
 from glia.skeleton import analyze_directory as analyze_skeleton_directory
 
@@ -58,9 +58,13 @@ class SegmentParams:
     dapi_dir: Path | None = None
 
     def fiji_args(self) -> dict:
+        # Use forward-slash (POSIX) paths even on Windows. The ImageJ macro
+        # language treats backslash as an escape char, so a native Windows
+        # path like C:\Users\... gets mangled (\U, \t, \n …) and the macro
+        # silently finds no input files. Java/ImageJ accept / on Windows.
         return {
-            "input_dir": str(self.input_dir),
-            "output_dir": str(self.thresholded_dir),
+            "input_dir": self.input_dir.as_posix(),
+            "output_dir": self.thresholded_dir.as_posix(),
             "threshold_kind": self.threshold_kind,
             "threshold_method": self.threshold_method,
             "manual_lower": int(self.manual_lower),
@@ -234,9 +238,9 @@ def run_threshold_only(params: SegmentParams) -> SegmentReport:
     Wipes ``thresholded_dir`` on each run so stale binaries from a
     different threshold setting can't survive.
     """
-    if not Path(params.fiji_path).exists():
-        raise FileNotFoundError(
-            f"FIJI executable not found: {params.fiji_path}")
+    fiji_err = validate_fiji_path(params.fiji_path)
+    if fiji_err:
+        raise FileNotFoundError(fiji_err)
     if not params.input_dir.is_dir():
         raise NotADirectoryError(
             f"input_dir is not a directory: {params.input_dir}")
@@ -279,8 +283,9 @@ def run_pipeline(params: SegmentParams) -> SegmentReport:
 
     Returns a SegmentReport with counts and FIJI stdout for diagnostics.
     """
-    if not Path(params.fiji_path).exists():
-        raise FileNotFoundError(f"FIJI executable not found: {params.fiji_path}")
+    fiji_err = validate_fiji_path(params.fiji_path)
+    if fiji_err:
+        raise FileNotFoundError(fiji_err)
     if not params.input_dir.is_dir():
         raise NotADirectoryError(f"input_dir is not a directory: {params.input_dir}")
     params.output_dir.mkdir(parents=True, exist_ok=True)

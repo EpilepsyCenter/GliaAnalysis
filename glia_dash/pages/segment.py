@@ -10,6 +10,7 @@ from dash import Input, Output, State, callback, dcc, html, no_update
 import dash_bootstrap_components as dbc
 
 from glia.prepare import prepared_dir
+from glia.fiji_runner import validate_fiji_path
 from glia.segment import SegmentParams, run_pipeline
 from glia_dash import server_state
 from glia_dash.components import alert, metric_card
@@ -134,9 +135,9 @@ def on_run(n_clicks, sid):
 
     if not project or not Path(project).is_dir():
         return alert("No project folder loaded.", variant="danger")
-    if not state.fiji_path or not Path(state.fiji_path).exists():
-        return alert(f"FIJI not found at {state.fiji_path!r}.",
-                     variant="danger")
+    fiji_err = validate_fiji_path(state.fiji_path)
+    if fiji_err:
+        return alert(fiji_err, variant="danger")
 
     # Pick up Prepared_dapi/ only when the user has opted in AND the
     # directory actually has prepared images. If they toggled use_dapi
