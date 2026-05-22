@@ -12,6 +12,7 @@ FracLac is replaced entirely by glia.features.compute_geometric_features.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -34,6 +35,15 @@ def run_headless(
     """
     arg_string = "|".join(f"{k}={v}" for k, v in args.items())
     macro_path = str(macro_path)
+    # On Windows, ImageJ-win64.exe is a GUI-subsystem binary with no stdout.
+    # Passing --console makes the launcher relaunch itself to attach a console
+    # ("GUI program launched from unknown parent process"), and that relaunch
+    # mangles the trailing "-macro <path>" arguments — the macro path is
+    # dropped and "-macro" itself is taken as the script name ("Macro or
+    # script not found: …/macros/-macro"). We detect results by reading the
+    # output files, not stdout, so just omit --console on Windows. On
+    # macOS/Linux it's harmless and gives us the FIJI log for diagnostics.
+    console = [] if sys.platform == "win32" else ["--console"]
     if macro_path.lower().endswith(".bsh"):
         # FIJI auto-detects script language from extension when a script
         # path is passed positionally. The trailing argument lands in
@@ -41,7 +51,7 @@ def run_headless(
         cmd = [
             str(fiji_path),
             "--headless",
-            "--console",
+            *console,
             macro_path,
             arg_string,
         ]
@@ -49,7 +59,7 @@ def run_headless(
         cmd = [
             str(fiji_path),
             "--headless",
-            "--console",
+            *console,
             "-macro",
             macro_path,
             arg_string,
