@@ -75,6 +75,39 @@ def join_project_image_metadata(
     return out
 
 
+def available_roi_tags(df: pd.DataFrame) -> list[str]:
+    """Sorted unique ``roi_tag`` values present in ``df`` (empty if none).
+
+    Used to populate the analysis tabs' "ROIs to include" selector.
+    """
+    if df is None or "roi_tag" not in getattr(df, "columns", []):
+        return []
+    return sorted(str(v) for v in pd.Series(df["roi_tag"]).dropna().unique())
+
+
+def filter_by_roi_tags(
+    df: pd.DataFrame, include,
+) -> tuple[pd.DataFrame, bool]:
+    """Keep only rows whose ``roi_tag`` is in ``include``.
+
+    Returns ``(filtered_df, applied)``. The filter is a deliberate no-op
+    — ``applied=False`` — when there's no ``roi_tag`` column, when
+    ``include`` is empty/None, or when ``include`` already covers every
+    tag present (so "all selected" and "future ROIs" both mean analyse
+    everything). Non-destructive: callers pass a working copy; the
+    canonical ``state.features_df`` is never shrunk by this.
+    """
+    if df is None or "roi_tag" not in getattr(df, "columns", []):
+        return df, False
+    inc = {str(t) for t in (include or []) if str(t) != ""}
+    if not inc:
+        return df, False
+    present = {str(v) for v in pd.Series(df["roi_tag"]).dropna().unique()}
+    if inc >= present:
+        return df, False
+    return df[df["roi_tag"].astype(str).isin(inc)], True
+
+
 def ensure_metadata_joined(state) -> None:
     """Refresh the per-image metadata join on ``state.features_df``.
 

@@ -44,8 +44,11 @@ from glia.inflammation_index import (
     per_animal_mean,
     train as ii_train,
 )
+from glia.metadata import available_roi_tags, filter_by_roi_tags
 from glia_dash import server_state
-from glia_dash.components import alert, empty_state, metric_card
+from glia_dash.components import (
+    alert, empty_state, metric_card, roi_include_control,
+)
 
 
 _ID_LIKE = {"ID", "roi_tag", "cell_index", "Cluster",
@@ -125,6 +128,13 @@ def layout(sid: str | None) -> html.Div:
                          if state.factor_cols
                          and state.factor_cols[0] in meta_cols
                          else meta_cols[0])
+
+    # Global "ROIs to include" filter (shared with Stats). Empty stored
+    # value = all; default the control to every tag selected.
+    roi_tags = available_roi_tags(df)
+    roi_stored = [t for t in (state.extra.get("roi_include") or [])
+                  if t in roi_tags]
+    roi_value = roi_stored if roi_stored else roi_tags
 
     # Recall any previously trained model, if any.
     model_dict = state.extra.get("inflammation_model")
@@ -261,6 +271,13 @@ def layout(sid: str | None) -> html.Div:
                   "flexWrap": "wrap", "gap": "8px",
                   "marginBottom": "16px"}),
 
+        roi_include_control(
+            roi_tags, roi_value, "ii-roi-include",
+            hint=("Train the axis using only these ROIs (e.g. drop ones "
+                  "underrepresented in a group). Every cell is still "
+                  "scored. Empty = all ROIs."),
+        ),
+
         dcc.Loading(
             type="default",
             children=html.Div(id="ii-output",
@@ -319,11 +336,13 @@ def populate_groups(treatment_col, sid):
     State("ii-control-group", "value"),
     State("ii-comparator-group", "value"),
     State("ii-max-size", "value"),
+    State("ii-roi-include", "value"),
     State("theme-store", "data"),
     State("session-id", "data"),
     prevent_initial_call=True,
 )
-def on_train(n_clicks, treatment_col, ctrl, comp, max_size, theme, sid):
+def on_train(n_clicks, treatment_col, ctrl, comp, max_size, roi_include,
+             theme, sid):
     if not n_clicks:
         return no_update, no_update
     state = server_state.get_session(sid)
@@ -342,10 +361,24 @@ def on_train(n_clicks, treatment_col, ctrl, comp, max_size, theme, sid):
         return alert("No numeric morphology features in the dataframe.",
                      variant="danger"), no_update
 
+    # Restrict the TRAINING reference set to the chosen ROIs (the axis is
+    # learned only from these); scoring below still covers every cell, so
+    # the canonical features_df is never shrunk. Normalise + persist the
+    # selection (shared with Stats).
+    _roi_all = set(available_roi_tags(df))
+    _roi_sel = {str(t) for t in (roi_include or []) if str(t) in _roi_all}
+    state.extra["roi_include"] = (
+        [] if (not _roi_sel or _roi_sel >= _roi_all) else sorted(_roi_sel))
+    train_df, roi_applied = filter_by_roi_tags(df, roi_include)
+    if roi_applied and len(train_df) == 0:
+        return alert("No rows left after the ROI filter — widen the "
+                     "'ROIs to include' selection.",
+                     variant="warning"), no_update
+
     t0 = time.time()
     try:
         model = ii_train(
-            df, treatment_col, ctrl, comp,
+            train_df, treatment_col, ctrl, comp,
             candidate_features=feats,
             max_size=int(max_size or DEFAULT_MAX_SUBSET_SIZE),
         )
@@ -382,12 +415,16 @@ def on_train(n_clicks, treatment_col, ctrl, comp, max_size, theme, sid):
     except Exception:
         pass
 
+    roi_msg = (
+        f" Axis trained on ROIs {', '.join(sorted(state.extra['roi_include']))} "
+        f"({len(train_df):,} of {len(df):,} cells); all cells were scored."
+        if roi_applied else "")
     return _render_results(
         scored, model, treatment_col, dt, theme, state,
         extra_top=alert(
             f"✓ Trained and applied to {len(scored):,} cells "
             f"(AUC = {model.train_auc:.3f}). 'inflammation_index' is "
-            f"now in Explore / Stats / features.csv.",
+            f"now in Explore / Stats / features.csv.{roi_msg}",
             variant="success",
         ),
     ), n_clicks

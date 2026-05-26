@@ -150,6 +150,41 @@ def empty_state(icon: str, title: str, text: str) -> html.Div:
     )
 
 
+def roi_include_control(
+    tags: list, value: list, control_id: str,
+    *, hint: str | None = None,
+) -> html.Div:
+    """A multi-select that restricts an analysis to chosen ``roi_tag`` values.
+
+    The dropdown is always rendered (so a callback ``State`` bound to
+    ``control_id`` always resolves), but its container is hidden when
+    there are fewer than two ROI tags — filtering is meaningless then.
+    Empty selection = all ROIs.
+    """
+    visible = len(tags or []) >= 2
+    default_hint = ("Uncheck ROIs to drop them from this analysis — e.g. "
+                    "ones underrepresented in some groups. Empty = all ROIs.")
+    return html.Div([
+        html.Label("ROIs to include",
+                   style={"fontSize": "0.72rem",
+                          "color": "var(--ned-text-muted)",
+                          "textTransform": "uppercase",
+                          "letterSpacing": "0.5px"}),
+        dcc.Dropdown(id=control_id,
+                     options=[{"label": str(t), "value": str(t)}
+                              for t in (tags or [])],
+                     value=list(value or []),
+                     multi=True,
+                     placeholder="All ROIs",
+                     style={"minWidth": "320px"}),
+        html.Div(hint or default_hint,
+                 style={"fontSize": "0.75rem",
+                        "color": "var(--ned-text-muted)",
+                        "marginTop": "4px"}),
+    ], style={"display": "block" if visible else "none",
+              "marginBottom": "12px"})
+
+
 def alert(message: str, variant: str = "info") -> html.Div:
     """Styled alert. variant: info, warning, danger, success."""
     cls = f"ned-alert {variant}" if variant != "info" else "ned-alert"

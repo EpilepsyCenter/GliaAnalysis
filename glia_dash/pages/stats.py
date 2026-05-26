@@ -19,8 +19,9 @@ from glia.stats import (
     group_sizes,
     mixed_effects_features,
 )
+from glia.metadata import available_roi_tags, filter_by_roi_tags
 from glia_dash import server_state
-from glia_dash.components import alert, metric_card
+from glia_dash.components import alert, metric_card, roi_include_control
 from glia_dash.pages.features import (
     _TABLE_STYLE_CELL, _TABLE_STYLE_DATA_CONDITIONAL,
     _TABLE_STYLE_HEADER, _TABLE_STYLE_TABLE,
@@ -324,6 +325,13 @@ def layout(sid: str | None) -> html.Div:
                  else 0)
     has_cluster = "Cluster" in df.columns
 
+    # "ROIs to include" — global filter shared with Inflammation. Empty
+    # stored value means all; default the control to every tag selected.
+    roi_tags = available_roi_tags(df)
+    roi_stored = [t for t in (state.extra.get("roi_include") or [])
+                  if t in roi_tags]
+    roi_value = roi_stored if roi_stored else roi_tags
+
     return html.Div([
         html.H4("Stats", style={"marginBottom": "8px"}),
         html.Div(
@@ -467,6 +475,8 @@ def layout(sid: str | None) -> html.Div:
         ], style={"display": "flex",
                   "alignItems": "flex-end",
                   "marginBottom": "12px"}),
+
+        roi_include_control(roi_tags, roi_value, "stats-roi-include"),
 
         html.Div([
             dbc.Button("Run stats", id="stats-run",
@@ -1159,12 +1169,13 @@ def _run_lmm(work, features, factors, animal, padjust, theme="light"):
     State("stats-aggregate", "value"),
     State("stats-method", "value"),
     State("stats-padjust", "value"),
+    State("stats-roi-include", "value"),
     State("theme-store", "data"),
     State("session-id", "data"),
     prevent_initial_call=True,
 )
 def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
-           theme, sid):
+           roi_include, theme, sid):
     if not n_clicks:
         return no_update
     state = server_state.get_session(sid)
@@ -1196,6 +1207,12 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
     state.extra["stats_method"] = str(method or "anova")
     state.extra["stats_padjust"] = str(padjust or "holm")
     state.extra["stats_aggregate"] = bool(aggregate)
+    # Normalise the ROI selection: store [] when all (or none) are
+    # selected so the filter is a no-op and stays robust to new ROIs.
+    _roi_all = set(available_roi_tags(df))
+    _roi_sel = {str(t) for t in (roi_include or []) if str(t) in _roi_all}
+    state.extra["roi_include"] = (
+        [] if (not _roi_sel or _roi_sel >= _roi_all) else sorted(_roi_sel))
     try:
         from glia.settings import save_project_settings
         save_project_settings(state.project_dir, state)
@@ -1207,13 +1224,28 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
     work = df.copy()
     work[feats] = work[feats].replace([np.inf, -np.inf], np.nan)
 
+    # ── Restrict to selected ROIs (non-destructive: on the copy) ──────
+    work, roi_applied = filter_by_roi_tags(work, roi_include)
+    if roi_applied and len(work) == 0:
+        return alert("No rows left after the ROI filter — widen the "
+                     "'ROIs to include' selection.", variant="warning")
+    roi_note = (alert(
+        f"Restricted to ROIs: {', '.join(sorted(state.extra['roi_include']))} "
+        f"({len(work):,} of {len(df):,} rows).", variant="info")
+        if roi_applied else None)
+
     # ── ROI-aware LMM path ────────────────────────────────────────────
     # When the user picks roi_tag as a factor we switch to a linear
     # mixed-effects model with Animal as a random intercept. This
     # handles unbalanced ROI sets per animal natively — pingouin's
     # mixed_anova would drop any animal that's missing a ROI level.
     if "roi_tag" in factors and "roi_tag" in work.columns:
-        return _run_lmm(work, features, factors, animal, padjust, theme)
+        out = _run_lmm(work, features, factors, animal, padjust, theme)
+        return html.Div([roi_note, out]) if roi_note else out
+
+    # Keep the ROI-filtered cell-level frame for cluster-proportion stats
+    # (which need cells, not the animal-level aggregate built below).
+    cell_level = work
 
     if aggregate:
         try:
@@ -1221,9 +1253,9 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
         except Exception as e:
             return alert(f"Aggregation failed: {e}", variant="danger")
         unit_label = (f"{len(work)} animals "
-                      f"({df[animal].nunique()} unique IDs)")
+                      f"({cell_level[animal].nunique()} unique IDs)")
     else:
-        unit_label = f"{len(df):,} cells (no aggregation)"
+        unit_label = f"{len(work):,} cells (no aggregation)"
 
     warnings_div = (alert(
         "Cell-level mode — p-values may be inflated by "
@@ -1243,6 +1275,7 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
 
     if min_n < 3:
         return html.Div([
+            roi_note,
             sizes_panel,
             alert(
                 f"At least one group has n = {min_n} (< 3). Statistical "
@@ -1293,11 +1326,12 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
         return alert(f"{method.title()} test failed: {e}",
                      variant="danger")
 
-    # Cluster proportions (if available)
+    # Cluster proportions (if available). Use the ROI-filtered cell-level
+    # frame so excluded ROIs don't sneak back into the proportions.
     cluster_block = None
-    if "Cluster" in df.columns:
+    if "Cluster" in cell_level.columns:
         try:
-            cp = cluster_percentages_per_animal(df, animal, factors,
+            cp = cluster_percentages_per_animal(cell_level, animal, factors,
                                                 cluster_col="Cluster")
             # ANOVA on arcsine_sqrt by (Cluster × factors) — one ANOVA per
             # cluster id.
@@ -1335,6 +1369,7 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
                 f"Cluster-proportion ANOVA failed: {e}", variant="warning")
 
     return html.Div([
+        roi_note,
         alert(f"✓ Stats run · unit: {unit_label} · "
               f"method: {method} · posthoc: {padjust}.",
               variant="success"),

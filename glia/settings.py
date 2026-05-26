@@ -61,6 +61,8 @@ _PROJECT_FIELDS = (
 # typed attributes on SessionState but we still want them to round-trip.
 _PROJECT_EXTRA_FIELDS = (
     "inflammation_model",
+    # Global "ROIs to include" filter shared by Stats + Inflammation.
+    "roi_include",
     # Explore tab selections
     "explore_features",
     "explore_group",
