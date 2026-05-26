@@ -50,6 +50,35 @@ SOURCE_EXTENSIONS = (
 )
 
 
+# Source extensions stripped when deriving a prepared-file stem. Compound
+# extensions (".ome.tif") MUST precede their plain suffixes so the whole
+# thing is removed — otherwise an OME-TIFF source yields a "<name>.ome"
+# stem and the prepared file is "<name>.ome.tif". ImageJ's open() routes
+# any *.ome.tif through the Bio-Formats GUI importer, which crashes with a
+# VerifyError under --headless, so the threshold macro aborts before it
+# saves anything. Keeping prepared outputs as plain *.tif makes ImageJ use
+# its native TIFF reader and never touch Bio-Formats.
+_STEM_STRIP_EXTS = (
+    ".ome.tif", ".ome.tiff",
+    ".tif", ".tiff",
+    ".czi", ".nd2", ".lif", ".vsi",
+)
+
+
+def clean_stem(name: str) -> str:
+    """Filename (basename) → stem with any known source extension removed.
+
+    Handles compound extensions (``foo.ome.tif`` → ``foo``) so prepared
+    outputs are plain ``*.tif`` and every downstream stem (cell IDs,
+    metadata-lookup keys, thresholded-file stems) lands on one value.
+    """
+    low = name.lower()
+    for ext in _STEM_STRIP_EXTS:
+        if low.endswith(ext):
+            return name[: -len(ext)]
+    return name.rsplit(".", 1)[0] if "." in name else name
+
+
 def prepared_dir(project_dir: str, mode: str = "microglia") -> Path:
     return glia_dir(project_dir, mode) / _PREPARED_NAME
 
@@ -81,13 +110,13 @@ def list_source_files(project_dir: str) -> list[Path]:
 def output_path_for(project_dir: str, source: Path,
                     mode: str = "microglia") -> Path:
     """Where the prepared TIFF lands for a given source file."""
-    return prepared_dir(project_dir, mode) / (source.stem + ".tif")
+    return prepared_dir(project_dir, mode) / (clean_stem(source.name) + ".tif")
 
 
 def output_path_for_dapi(project_dir: str, source: Path,
                          mode: str = "microglia") -> Path:
     """Where the prepared DAPI TIFF lands for a given source file."""
-    return prepared_dapi_dir(project_dir, mode) / (source.stem + ".tif")
+    return prepared_dapi_dir(project_dir, mode) / (clean_stem(source.name) + ".tif")
 
 
 @dataclass

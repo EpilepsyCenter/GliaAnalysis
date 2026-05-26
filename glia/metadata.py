@@ -57,12 +57,17 @@ def join_project_image_metadata(
     if not image_metadata or not user_cols:
         return out
 
+    from glia.prepare import clean_stem
     lookup: dict[str, dict] = {}
     for row in image_metadata:
         img = row.get("image", "")
         if not img:
             continue
-        stem = img.rsplit(".", 1)[0]
+        # Same stem rule as the prepared-file naming, so an OME-TIFF
+        # source (image="foo.ome.tif") keys on "foo" — matching the
+        # cell-ID image_stem derived from the plain "foo.tif" prepared
+        # file. Plain ``.tif``/``.czi``/… sources are unaffected.
+        stem = clean_stem(img)
         lookup[stem] = {c: row.get(c, "") for c in user_cols}
 
     for c in user_cols:

@@ -65,12 +65,15 @@ def _join_metadata(df: pd.DataFrame, project_dir: str) -> pd.DataFrame:
     if not user_cols:
         return df
 
+    from glia.prepare import clean_stem
     lookup: dict[str, dict] = {}
     for row in meta:
         img = row.get("image", "")
         if not img:
             continue
-        stem = img.rsplit(".", 1)[0]
+        # Match the prepared-file stem rule (strips compound ".ome.tif")
+        # so the lookup key lines up with the thresholded-file image_stem.
+        stem = clean_stem(img)
         lookup[stem] = {c: row.get(c, "") for c in user_cols}
 
     out = df.copy()
@@ -260,6 +263,32 @@ def _render_summary(df: pd.DataFrame, project: str, *,
     ])
 
 
+def _fiji_log_block(log: str) -> html.Details:
+    """Collapsible FIJI stdout/stderr dump.
+
+    Shown when the threshold macro ran but wrote fewer files than inputs,
+    so the failing ``run(...)`` line (e.g. an "Auto Local Threshold" the
+    local FIJI build lacks) is visible instead of being swallowed.
+    """
+    return html.Details([
+        html.Summary("FIJI log",
+                     style={"cursor": "pointer",
+                            "fontSize": "0.8rem",
+                            "color": "var(--ned-text-muted)",
+                            "marginTop": "8px"}),
+        html.Pre(log,
+                 style={"fontSize": "0.72rem",
+                        "color": "var(--ned-text-muted)",
+                        "maxHeight": "300px", "overflow": "auto",
+                        "background": "var(--ned-surface)",
+                        "padding": "8px",
+                        "border": "1px solid var(--ned-border)",
+                        "borderRadius": "6px",
+                        "whiteSpace": "pre-wrap",
+                        "marginTop": "6px"}),
+    ])
+
+
 # ── Callbacks ───────────────────────────────────────────────────────
 
 
@@ -318,11 +347,36 @@ def on_threshold(n_clicks, sid):
         return alert(f"Thresholding failed: {e}", variant="danger")
     dt = time.time() - t0
 
-    msg = (f"✓ Thresholded {report.n_thresholded} of "
-           f"{report.n_input_images} prepared images in {dt:.1f} s. "
+    n, n_in = report.n_thresholded, report.n_input_images
+    log = (report.phase1_stdout or "").strip()
+
+    # FIJI launched but the macro wrote fewer files than it had inputs:
+    # an ImageJ macro aborts on the first run(...) it can't execute, so a
+    # zero (or partial) count means a command this FIJI build doesn't
+    # have — classically "Auto Local Threshold" missing from a plain
+    # ImageJ, or a filter a different FIJI version renamed. Surface the
+    # captured log instead of a misleading green tick so the failing line
+    # is visible.
+    if n < n_in:
+        head = (
+            f"FIJI ran on {n_in} prepared image"
+            f"{'s' if n_in != 1 else ''} but wrote {n} thresholded "
+            f"file{'s' if n != 1 else ''}. The macro aborted before "
+            "saving — usually a command this FIJI build lacks (e.g. the "
+            "Auto Local Threshold plugin, present in FIJI but not a plain "
+            "ImageJ) or a filter a different FIJI version renamed. The "
+            "FIJI log below shows the failing line."
+        )
+        children = [alert(head, variant="danger" if n == 0 else "warning")]
+        if log:
+            children.append(_fiji_log_block(log))
+        return html.Div(children)
+
+    msg = (f"✓ Thresholded {n} of {n_in} prepared images in {dt:.1f} s. "
            f"Binaries at {params.thresholded_dir}. "
            "Now click 'Run analysis' to compute metrics.")
-    return alert(msg, variant="success")
+    return html.Div([alert(msg, variant="success")]
+                    + ([_fiji_log_block(log)] if log else []))
 
 
 @callback(
