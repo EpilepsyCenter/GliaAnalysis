@@ -46,9 +46,18 @@ scoring all run in Python — no R required.
 
 ### Prerequisites — all platforms
 
-1. **Python 3.10 or newer** (3.11 / 3.12 / 3.13 work).
+1. **Python 3.10 or newer** (3.11 / 3.12 / 3.13 work). On Windows, install
+   the **python.org** build (not the Microsoft Store build) so `tkinter`
+   — used by the folder picker — is included.
 2. **FIJI / ImageJ** with Bio-Formats. Download from
    <https://imagej.net/software/fiji/downloads>. Bio-Formats ships bundled.
+3. **Git** (to clone) — <https://git-scm.com/downloads>. No Git? Use
+   GitHub's **Code ▸ Download ZIP** instead and extract it.
+
+`requirements.txt` lists the libraries with loose lower bounds.
+`requirements-lock.txt` pins the exact, tested versions — every pin has a
+prebuilt wheel for current Windows/macOS-arm64/Linux + Python 3.13, so the
+install needs no compiler. Prefer the lock file for a reproducible setup.
 
 ### Mac / Linux
 
@@ -74,17 +83,22 @@ Then open <http://127.0.0.1:8050/> in your browser.
 git clone https://github.com/EpilepsyCenter/GliaAnalysis.git
 cd GliaAnalysis
 
-py -m venv .venv
+py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1   # PowerShell
 # or
 .\.venv\Scripts\activate.bat   # cmd.exe
 
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+pip install -r requirements-lock.txt   # pinned, wheels-only (recommended)
 
 python app.py
 ```
 
-Then open <http://127.0.0.1:8050/>.
+Then open <http://127.0.0.1:8050/>. For a step-by-step Windows walkthrough
+plus a verification checklist, see **[`docs/INSTALL_WINDOWS.md`](docs/INSTALL_WINDOWS.md)**.
+
+> Don't copy a `.venv` between machines — it's OS/arch-specific. Always
+> create the venv on the target machine.
 
 On Windows, when configuring FIJI in the Setup → Threshold tab, point at the
 `ImageJ-win64.exe` inside the FIJI folder (typically `C:\Fiji.app\ImageJ-win64.exe`).

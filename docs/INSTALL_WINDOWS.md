@@ -13,6 +13,30 @@ gives a step-by-step checklist to verify it. No code changes are required
 
 ---
 
+## 0. Get the code
+
+**Option A — Git (recommended; lets you `git pull` updates).**
+Install *Git for Windows* from <https://git-scm.com/download/win> (accept
+the defaults), then in **PowerShell**:
+
+```powershell
+git clone https://github.com/EpilepsyCenter/GliaAnalysis.git
+cd GliaAnalysis
+```
+
+Later, to update to the newest version: `git pull`.
+
+**Option B — download a ZIP (no Git needed).**
+On the GitHub page (<https://github.com/EpilepsyCenter/GliaAnalysis>) click
+**Code ▸ Download ZIP**, extract it (right-click ▸ *Extract All…*), then
+open the extracted `GliaAnalysis` folder in a terminal. To update later you
+re-download the ZIP (there's no `git pull`).
+
+All steps below assume you're **inside the project folder** — the one that
+contains `app.py` and `requirements-lock.txt`.
+
+---
+
 ## 1. Prerequisites
 
 1. **Python 3.13 (64-bit) from python.org** — *not* the Microsoft Store
