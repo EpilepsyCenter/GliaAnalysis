@@ -488,6 +488,23 @@ def layout(sid: str | None) -> html.Div:
                              "color": "var(--ned-text-muted)"}),
         ], style={"display": "flex", "alignItems": "center"}),
 
+        html.Div([
+            html.Button("Download stats overview (.xlsx)",
+                        id="stats-export",
+                        className="btn-ned-secondary"),
+            html.Span(
+                id="stats-export-status",
+                children=("One sheet per table from your last run — "
+                          "feature tests, pairwise posthocs (effect "
+                          "sizes + corrected p), group sizes, and the "
+                          "LMM tables when used."),
+                style={"marginLeft": "12px",
+                       "fontSize": "0.78rem",
+                       "color": "var(--ned-text-muted)"}),
+        ], style={"display": "flex", "alignItems": "center",
+                  "marginTop": "8px"}),
+        dcc.Download(id="stats-download"),
+
         dcc.Loading(
             type="default",
             children=html.Div(id="stats-output",
@@ -947,7 +964,8 @@ def _formula_panel(formula: str, n_obs: int, n_animals: int) -> html.Div:
     ], style={"marginBottom": "12px"})
 
 
-def _run_lmm(work, features, factors, animal, padjust, theme="light"):
+def _run_lmm(work, features, factors, animal, padjust, theme="light",
+             state=None):
     """Mixed-effects branch — Treatment × ROI fixed, Animal random."""
     between = [c for c in factors if c != "roi_tag"]
 
@@ -986,6 +1004,34 @@ def _run_lmm(work, features, factors, animal, padjust, theme="light"):
     re_df = info.get("random_effects", pd.DataFrame())
     contrasts_df = info.get("contrasts", pd.DataFrame())
     references = info.get("references", {})
+
+    # Stash for the "Download stats overview" export (in-memory only).
+    if state is not None:
+        refs_df = (pd.DataFrame({"factor": list(references.keys()),
+                                 "reference_level":
+                                     [references[k] for k in references]})
+                   if references else pd.DataFrame())
+        state.extra["stats_results"] = {
+            "meta": {
+                "method": "Linear mixed-effects (LMM)",
+                "posthoc_correction": padjust,
+                "factors": ", ".join(factors),
+                "within_factor": "roi_tag",
+                "between_factors": ", ".join(between) or "(none)",
+                "animal_id": animal,
+                "roi_filter": (", ".join(state.extra.get("roi_include") or [])
+                               or "all ROIs"),
+                "run_at": str(pd.Timestamp.now().round("s")),
+            },
+            "tables": {
+                "group_sizes": sizes,
+                "lmm_fixed_effects": fixed_df,
+                "lmm_posthocs": post_df,
+                "lmm_contrasts": contrasts_df,
+                "lmm_random_effects": re_df,
+                "reference_levels": refs_df,
+            },
+        }
 
     # Reference-level banner — these are the levels every Patsy
     # 'X[T.level]' coefficient is measured *against*. Without this,
@@ -1161,6 +1207,29 @@ def _run_lmm(work, features, factors, animal, padjust, theme="light"):
 
 
 @callback(
+    Output("stats-download", "data"),
+    Output("stats-export-status", "children"),
+    Input("stats-export", "n_clicks"),
+    State("session-id", "data"),
+    prevent_initial_call=True,
+)
+def on_export_overview(n_clicks, sid):
+    """Stream every table from the user's last stats run as one .xlsx."""
+    if not n_clicks:
+        return no_update, no_update
+    state = server_state.get_session(sid)
+    results = state.extra.get("stats_results")
+    if not results or not (results.get("tables")):
+        return no_update, "Run stats first — nothing to export yet."
+    from glia_dash.exporters import (dataframes_to_xlsx_bytes,
+                                     stats_results_to_sheets)
+    xlsx = dataframes_to_xlsx_bytes(stats_results_to_sheets(results))
+    return (dcc.send_bytes(lambda buf: buf.write(xlsx),
+                           "stats_overview.xlsx"),
+            "✓ Exported your last stats run.")
+
+
+@callback(
     Output("stats-output", "children"),
     Input("stats-run", "n_clicks"),
     State("stats-animal-id", "value"),
@@ -1240,7 +1309,8 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
     # handles unbalanced ROI sets per animal natively — pingouin's
     # mixed_anova would drop any animal that's missing a ROI level.
     if "roi_tag" in factors and "roi_tag" in work.columns:
-        out = _run_lmm(work, features, factors, animal, padjust, theme)
+        out = _run_lmm(work, features, factors, animal, padjust, theme,
+                       state=state)
         return html.Div([roi_note, out]) if roi_note else out
 
     # Keep the ROI-filtered cell-level frame for cluster-proportion stats
@@ -1329,6 +1399,7 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
     # Cluster proportions (if available). Use the ROI-filtered cell-level
     # frame so excluded ROIs don't sneak back into the proportions.
     cluster_block = None
+    cluster_anova = cluster_post = None
     if "Cluster" in cell_level.columns:
         try:
             cp = cluster_percentages_per_animal(cell_level, animal, factors,
@@ -1367,6 +1438,31 @@ def on_run(n_clicks, animal, factors, features, aggregate, method, padjust,
         except Exception as e:
             cluster_block = alert(
                 f"Cluster-proportion ANOVA failed: {e}", variant="warning")
+
+    # Stash the run so the "Download stats overview" button can serialize
+    # every table. In-memory only (not in _PROJECT_EXTRA_FIELDS, so it
+    # isn't written to the settings JSON).
+    _stats_tables = {"group_sizes": sizes,
+                     "feature_test": anova_df,
+                     "posthocs": post_df}
+    if cluster_anova is not None and len(cluster_anova):
+        _stats_tables["cluster_anova"] = cluster_anova
+    if cluster_post is not None and len(cluster_post):
+        _stats_tables["cluster_posthocs"] = cluster_post
+    state.extra["stats_results"] = {
+        "meta": {
+            "method": method,
+            "posthoc_correction": padjust,
+            "factors": ", ".join(factors),
+            "animal_id": animal,
+            "unit": unit_label,
+            "aggregated_to_animal": bool(aggregate),
+            "roi_filter": (", ".join(state.extra.get("roi_include") or [])
+                           or "all ROIs"),
+            "run_at": str(pd.Timestamp.now().round("s")),
+        },
+        "tables": _stats_tables,
+    }
 
     return html.Div([
         roi_note,

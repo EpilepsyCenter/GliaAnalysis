@@ -231,6 +231,22 @@ def layout(sid: str | None) -> html.Div:
                   "alignItems": "flex-end",
                   "gap": "0", "marginBottom": "16px"}),
 
+        html.Div([
+            html.Button("Download raw data (Prism .xlsx)",
+                        id="explore-export",
+                        className="btn-ned-secondary"),
+            html.Span(
+                "One sheet per plotted feature, columns = group × split, "
+                "rows = the replicate values behind the bars (per-animal "
+                "means when an Animal column + split are set). Reflects "
+                "the current selection and transform.",
+                style={"marginLeft": "12px",
+                       "fontSize": "0.78rem",
+                       "color": "var(--ned-text-muted)"}),
+        ], style={"display": "flex", "alignItems": "center",
+                  "marginBottom": "8px"}),
+        dcc.Download(id="explore-download"),
+
         dcc.Loading(
             children=[
                 html.H6("Distributions",
@@ -634,6 +650,47 @@ def update_plots(transform, group, split, features, show_points, theme, sid):
         corr_fig = _error_figure(theme,
                                  f"Correlation plot failed: {e}")
     return dist_fig, corr_fig
+
+
+@callback(
+    Output("explore-download", "data"),
+    Input("explore-export", "n_clicks"),
+    State("explore-transform", "value"),
+    State("explore-group", "value"),
+    State("explore-split", "value"),
+    State("explore-features", "value"),
+    State("session-id", "data"),
+    prevent_initial_call=True,
+)
+def on_export_raw(n_clicks, transform, group, split, features, sid):
+    """Stream the Prism-ready raw-data workbook for the current Explore
+    selection. Cleans inf and applies the same transform the plot uses so
+    the exported numbers reproduce the displayed bars."""
+    if not n_clicks:
+        return no_update
+    state = server_state.get_session(sid)
+    df_raw = state.features_df
+    if df_raw is None or len(df_raw) == 0:
+        return no_update
+    if split and split == group:
+        split = ""
+
+    feats_all = _feature_columns(df_raw, getattr(state, "mode", "microglia"))
+    df_clean = df_raw.copy()
+    df_clean[feats_all] = df_clean[feats_all].replace([np.inf, -np.inf],
+                                                      np.nan)
+    df_plot = (apply_transform(df_clean, feats_all, transform)
+               if transform and transform != "none" else df_clean)
+
+    from glia_dash.exporters import (build_explore_prism_sheets,
+                                     dataframes_to_xlsx_bytes)
+    sheets = build_explore_prism_sheets(
+        df_plot, list(features or []), group or "", split or "",
+        getattr(state, "animal_id_col", "") or "",
+    )
+    xlsx = dataframes_to_xlsx_bytes(sheets)
+    return dcc.send_bytes(lambda buf: buf.write(xlsx),
+                          "explore_raw_data.xlsx")
 
 
 def _error_figure(theme: str, msg: str) -> go.Figure:
