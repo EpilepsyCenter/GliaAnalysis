@@ -77,12 +77,26 @@ pip install -r requirements-lock.txt
 > Do **not** copy a `.venv` from a Mac — it's architecture-specific and
 > won't run on Windows. Always create the venv on the Windows machine.
 
+> **If `Activate.ps1` errors with "running scripts is disabled on this
+> system":** that's PowerShell's default execution policy, not a problem
+> with the venv. Either run `Set-ExecutionPolicy -Scope CurrentUser
+> RemoteSigned` once (in the *same* terminal, answer `Y`), or skip
+> activation entirely — `run.bat` and calling `.\.venv\Scripts\python.exe`
+> directly are unaffected by execution policy. Note Windows PowerShell 5.1
+> and PowerShell 7 keep **separate** policy settings, so set it in whichever
+> edition you actually use.
+
 The install should print `Downloading …whl` / `Using cached …whl` lines
 and finish without compiling anything.
 
 ---
 
 ## 3. Run + configure
+
+Easiest — double-click **`run.bat`**, or run `.\run.bat` from any shell. It
+calls the venv's Python directly, so it needs **no `activate` step** and is
+**unaffected by PowerShell's execution policy**. Equivalently, with the venv
+active:
 
 ```powershell
 python app.py
@@ -153,3 +167,10 @@ These are documented, not yet fixed in code:
 - **Very deep project paths fail**: Windows' legacy `MAX_PATH` limit —
   keep the project folder reasonably shallow, or enable Win32 long paths.
 - **Browse button does nothing**: `tkinter` is missing — see §1.1.
+- **`Activate.ps1` says "running scripts is disabled on this system"**:
+  PowerShell's default execution policy blocks `.ps1` scripts. Fix it once
+  with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` (run in the same
+  terminal/edition, type `Y`), or avoid activation altogether by launching
+  with **`run.bat`** or `.\.venv\Scripts\python.exe app.py`. PowerShell 5.1
+  and 7 track this setting separately, so changing it in one won't affect the
+  other.
