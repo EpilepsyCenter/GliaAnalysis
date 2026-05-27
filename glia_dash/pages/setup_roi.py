@@ -48,6 +48,26 @@ def _load_image(path: str) -> np.ndarray:
     return _IMAGE_CACHE[path][1]
 
 
+def _to_display_2d(img: np.ndarray) -> np.ndarray:
+    """Collapse any array to a 2D grayscale backdrop for ROI drawing.
+
+    Prepared single-channel TIFFs are already 2D and pass through; RGB/RGBA
+    is left for px.imshow. Multichannel stacks — e.g. the ``CYX`` OME-TIFFs
+    that come straight out of the VSI conversion (DAPI + DCX) — are
+    max-projected across the channel axis. The ROI step only needs an
+    anatomical backdrop to draw regions on, not faithful colour, so a max
+    projection is enough and keeps px.imshow from rejecting the array.
+    """
+    if img.ndim == 2:
+        return img
+    if img.ndim == 3 and img.shape[-1] in (3, 4):
+        return img  # RGB / RGBA — px.imshow handles these directly.
+    # Channel axis is the smallest (2 channels here, vs ~1000-px image dims).
+    flat = img.reshape(-1, *img.shape[-2:]) if img.ndim > 3 else img
+    ch_axis = int(np.argmin(flat.shape))
+    return flat.max(axis=ch_axis)
+
+
 def _list_images(folder: str, mode: str = "microglia") -> list[str]:
     """Return the prepared 8-bit TIFFs for the project, falling back to
     legacy top-level TIFFs if the Prepare step hasn't been run yet."""
@@ -313,7 +333,7 @@ def _render_roi_list(rois: list[dict]) -> html.Div:
 
 def _image_figure(path: str, theme: str, rois: list[dict],
                   draw_mode: str = "drawclosedpath") -> go.Figure:
-    img = _load_image(path)
+    img = _to_display_2d(_load_image(path))
     fig = px.imshow(img, color_continuous_scale="gray",
                     binary_string=True, aspect="equal")
     fig.update_layout(
