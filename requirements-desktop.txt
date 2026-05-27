@@ -1,0 +1,12 @@
+# GliaAnalysis — native desktop app add-on (optional).
+#
+# Enables running GliaAnalysis in its own window instead of a browser tab.
+# Install AFTER the base requirements / lock:
+#     pip install -r requirements-desktop.txt
+#
+# Then launch with  python -m glia_dash.desktop  or the platform launcher
+# (Start GliaAnalysis (Native).bat / .command / start-gliaanalysis-native.sh).
+
+waitress>=3.0                                   # production WSGI server
+pywebview>=5.0; sys_platform != 'linux'         # WebView2 (Win) / WKWebView (macOS)
+pywebview[qt]>=5.0; sys_platform == 'linux'     # Qt backend bundles its web engine

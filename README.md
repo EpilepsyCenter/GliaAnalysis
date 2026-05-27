@@ -111,6 +111,38 @@ On Linux it's the `ImageJ-linux64` binary inside the Fiji folder.
 automatically on first folder load — make sure FIJI is configured before opening
 a project that contains `.vsi` files.
 
+## Native desktop app (optional)
+
+By default GliaAnalysis opens in your web browser. To run it as a **standalone
+desktop application** — its own window, with the GliaAnalysis icon, no browser
+tab — install the optional desktop add-on:
+
+```bash
+pip install -r requirements-desktop.txt
+```
+
+This adds **pywebview** (the native window) and **waitress** (a production WSGI
+server, so there is no "development server" warning). The window technology is
+chosen automatically: WebView2 on Windows, WKWebView on macOS, and a bundled Qt
+web engine on Linux.
+
+Then launch it from the terminal:
+
+```bash
+python -m glia_dash.desktop
+```
+
+…or double-click the launcher for your platform (no terminal needed):
+
+| Platform | Launcher | First-run step |
+|----------|----------|----------------|
+| Windows | `Start GliaAnalysis (Native).bat` | — |
+| macOS | `Start GliaAnalysis (Native).command` | `chmod +x "Start GliaAnalysis (Native).command"` |
+| Linux | `start-gliaanalysis-native.sh` | `chmod +x start-gliaanalysis-native.sh` |
+
+The desktop app serves on `127.0.0.1:8060` (auto-selecting a free port if busy),
+so it can run alongside the browser version.
+
 ## Quick start
 
 ### 1. Make a project folder
@@ -197,6 +229,7 @@ Save features tables, group plots, and project artifacts to
 app.py                       Dash entry point
 glia_dash/                   UI layer
   main.py                    Dash app, sidebar, mode-aware tab bar
+  desktop.py                 Native desktop-window launcher (pywebview + waitress)
   components.py              Shared layout helpers + native folder/file pickers
   server_state.py            UUID-keyed session state
   pages/                     One module per tab
