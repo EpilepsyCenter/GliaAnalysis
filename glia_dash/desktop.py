@@ -128,6 +128,10 @@ def main() -> None:
             f"GliaAnalysis server did not come up on {HOST}:{port} within 30s."
         )
 
+    # pywebview cancels every download by default, which silently breaks all
+    # dcc.Download export buttons. Allow them (a native Save dialog appears).
+    webview.settings["ALLOW_DOWNLOADS"] = True
+
     webview.create_window(
         TITLE,
         f"http://{HOST}:{port}",
