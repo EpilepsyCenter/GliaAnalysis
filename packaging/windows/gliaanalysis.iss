@@ -7,7 +7,7 @@
 ; The release workflow passes the version (iscc /DAppVersion=x.y.z); otherwise
 ; keep this in step with glia_dash/__init__.py
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.0.1"
 #endif
 #define AppExe "GliaAnalysis.exe"
 

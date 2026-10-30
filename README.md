@@ -334,7 +334,7 @@ These files round-trip on folder reopen; nothing is lost between sessions.
 
 ## Status
 
-Version 1.0.0. The pipelines are functional end-to-end. Report issues at
+Version 1.0.1. The pipelines are functional end-to-end. Report issues at
 <https://github.com/EpilepsyCenter/GliaAnalysis/issues>.
 
 ## License
