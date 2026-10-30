@@ -127,8 +127,9 @@ jobs:
             in **Settings** (found automatically in `/Applications/Fiji.app` on macOS).
 
             - **macOS:** open the `.dmg` and drag GliaAnalysis to Applications. The app is not
-              notarized: the first time, right-click it and choose **Open** (or allow it in
-              System Settings › Privacy & Security).
+              notarized, so macOS blocks the first start. Either click **Open Anyway** in
+              System Settings › Privacy & Security, or run this once in Terminal:
+              `xattr -dr com.apple.quarantine /Applications/GliaAnalysis.app`
             - **Windows:** run `GliaAnalysis-…-Setup.exe`. If SmartScreen warns, choose
               **More info › Run anyway**. The first start can take a minute while the virus
               scanner checks the app.

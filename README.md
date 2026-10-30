@@ -49,7 +49,17 @@ Installers for **macOS (Apple Silicon)**, **Windows** and **Linux** are on the
 No Python needed.
 
 - **macOS:** open the `.dmg` and drag GliaAnalysis to Applications. The app is
-  not notarized: the first time, right-click it and choose **Open**.
+  free and not notarized by Apple, so macOS blocks the first start (on recent
+  macOS, right-click › Open no longer gets past this). Either:
+  - open **System Settings › Privacy & Security**, scroll to "GliaAnalysis was
+    blocked" and click **Open Anyway**, or
+  - run this once in Terminal, then open the app normally:
+    ```bash
+    xattr -dr com.apple.quarantine /Applications/GliaAnalysis.app
+    ```
+    It removes the "downloaded from the internet" flag that triggers the block.
+    Use the same command if macOS says the app "is damaged and can't be
+    opened" — the app is fine.
 - **Windows:** run `GliaAnalysis-…-Setup.exe` (installs for your user, no admin
   rights). If SmartScreen warns, choose **More info › Run anyway**.
 - **Linux:** unpack the `.tar.gz` and run `GliaAnalysis/GliaAnalysis`.
