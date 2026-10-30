@@ -6,7 +6,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from glia.config import ALL_FEATURES, SKELETON_FEATURES
+from glia.config import (
+    ALL_FEATURES, FRACLAC_FEATURES, SHOLL_FEATURES, SKELETON_FEATURES,
+    SOMA_FEATURES,
+)
 from glia.features import (
     load_skeleton_results,
     merge_geometric_and_skeleton,
@@ -63,4 +66,9 @@ def test_merge_geometric_and_skeleton(tmp_path: Path):
 
 
 def test_all_features_count():
-    assert len(ALL_FEATURES) == 27
+    # 18 FracLac-equivalent + 9 skeleton + 5 soma + 4 Sholl, in that order.
+    # Adding a feature group means updating this makeup on purpose.
+    groups = [FRACLAC_FEATURES, SKELETON_FEATURES, SOMA_FEATURES, SHOLL_FEATURES]
+    assert [len(g) for g in groups] == [18, 9, 5, 4]
+    assert list(ALL_FEATURES) == [f for g in groups for f in g]
+    assert len(set(ALL_FEATURES)) == len(ALL_FEATURES) == 36  # no duplicates
