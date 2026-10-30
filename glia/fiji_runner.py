@@ -80,7 +80,7 @@ def validate_fiji_path(fiji_path: str | Path | None) -> str | None:
     """
     if not fiji_path:
         return ("No FIJI path configured. Set it to the FIJI executable in "
-                "the Setup tab.")
+                "Settings.")
     p = Path(fiji_path)
     if not p.exists():
         return f"FIJI executable not found: {fiji_path}"
@@ -106,3 +106,27 @@ def discover_fiji() -> str | None:
         if Path(c).exists():
             return c
     return None
+
+
+# Program names inside a Fiji installation, newest launchers first.
+_FIJI_EXECUTABLES = (
+    "Contents/MacOS/fiji-macos-arm64", "Contents/MacOS/fiji-macos-x64",
+    "Contents/MacOS/fiji-macos", "Contents/MacOS/ImageJ-macosx",
+    "fiji-windows-x64.exe", "ImageJ-win64.exe", "ImageJ-win32.exe",
+    "fiji-linux-x64", "ImageJ-linux64", "ImageJ-linux32",
+)
+
+
+def resolve_fiji_path(path: str | Path | None) -> str:
+    """The FIJI program for a picked path: a folder or ``Fiji.app`` bundle
+    becomes the executable inside it (the first known launcher name that
+    exists); anything else is returned unchanged."""
+    if not path:
+        return ""
+    p = Path(path)
+    if p.is_dir():
+        for name in _FIJI_EXECUTABLES:
+            exe = p / name
+            if exe.is_file():
+                return str(exe)
+    return str(path)

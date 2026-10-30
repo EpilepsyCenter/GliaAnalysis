@@ -14,9 +14,10 @@ User-friendly GUI replacement for the Ciernia Lab pipeline:
 
 `dash + dash-bootstrap-components + pandas + scikit-image + scikit-learn +
 pingouin + plotly` plus a disk-installed FIJI for the validated
-thresholding/skeleton steps. Shares the design system (CSS tokens, sidebar
-layout, native folder/file pickers) with the sibling NED-Net Dash app —
-see `glia_dash/assets/style.css`.
+thresholding/skeleton steps. Shares the desktop look (CSS tokens, sidebar /
+toolbar / status bar layout, native menu, native folder/file pickers) with
+the sibling apps NED-Net, ASTERISM and TRACER — see
+`glia_dash/assets/style.css` and `glia_dash/desktop.py`.
 
 ## Pipeline
 

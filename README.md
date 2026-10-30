@@ -100,8 +100,10 @@ plus a verification checklist, see **[`docs/INSTALL_WINDOWS.md`](docs/INSTALL_WI
 > Don't copy a `.venv` between machines — it's OS/arch-specific. Always
 > create the venv on the target machine.
 
-On Windows, when configuring FIJI in the Setup → Threshold tab, point at the
-`ImageJ-win64.exe` inside the FIJI folder (typically `C:\Fiji.app\ImageJ-win64.exe`).
+Set FIJI on the **Settings** page (bottom of the sidebar, or Ctrl/⌘ ,). On
+Windows, point at the `ImageJ-win64.exe` inside the FIJI folder (typically
+`C:\Fiji.app\ImageJ-win64.exe`); picking the Fiji folder with **Browse…** also
+finds it.
 On macOS the path is `/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx`.
 On Linux it's the `ImageJ-linux64` binary inside the Fiji folder.
 
@@ -156,18 +158,24 @@ Any folder containing your raw microscopy images works:
 
 ### 2. Configure mode
 
-In the left sidebar, set **Mode** to either **Microglia** or **Astrocyte**. The
-tab bar reshapes for the active mode:
+Open the project with **Open project…** in the toolbar (or File › Open
+Project…, Ctrl/⌘ O). Under the logo in the sidebar, switch between
+**Microglia** and **Astrocyte**. The page list reshapes for the active mode:
 
-- Microglia: Setup → Segment → Features → Explore → Cluster → Inflammation → Stats → Export.
-- Astrocyte: Setup → Astrocyte → Explore → Inflammation → Stats → Export.
+- Microglia: Setup → Segment → Features → Cluster → Explore → Inflammation → Stats → Export.
+- Astrocyte: Setup → Astrocyte analysis → Explore → Inflammation → Stats → Export.
+
+Ctrl/⌘ 1–9 jump to the pages in sidebar order. The status bar along the
+bottom shows FIJI, prepared images, ROIs, features and clusters. Light and
+dark follow the system; the sidebar's **Dark mode** switch overrides it.
 
 Each mode keeps its own `Prepared/` and `ThresholdedImages/` folders under
 `_gliaanalysis/` so switching modes doesn't overwrite the other mode's outputs.
 
 ### 3. Setup → Prepare
 
-Set FIJI executable path (one-time, per machine). For each image, pick:
+FIJI is set once per computer on the Settings page (it is found automatically
+when installed in `/Applications/Fiji.app`). For each image, pick:
 
 - The **primary channel** (Iba1 for microglia, GFAP for astrocyte).
 - Optionally the **DAPI channel** (microglia mode) for nucleus-seeded soma centering.
@@ -228,9 +236,11 @@ Save features tables, group plots, and project artifacts to
 ```
 app.py                       Dash entry point
 glia_dash/                   UI layer
-  main.py                    Dash app, sidebar, mode-aware tab bar
+  main.py                    Dash app shell: sidebar, toolbar, status bar
   desktop.py                 Native desktop-window launcher (pywebview + waitress)
-  components.py              Shared layout helpers + native folder/file pickers
+  components.py              Shared layout helpers, plot palette, native pickers
+  assets/                    style.css (theme), app_shell.js (shortcuts, menu API),
+                             logos and icons (built by tools/make_logo.py)
   server_state.py            UUID-keyed session state
   pages/                     One module per tab
     setup_*.py               Setup subtabs (Prepare / ROIs / Threshold / Soma)

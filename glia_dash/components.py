@@ -140,12 +140,55 @@ def metric_card(label: str, value: str, accent: bool = False) -> html.Div:
 
 
 def empty_state(icon: str, title: str, text: str) -> html.Div:
+    """Title + explanation for a page with nothing to show yet.
+
+    ``icon`` is accepted for old call sites but not drawn (no emoji in
+    the interface).
+    """
     return html.Div(
         className="empty-state",
         children=[
-            html.Div(icon, className="empty-icon"),
             html.Div(title, className="empty-title"),
             html.Div(text, className="empty-text"),
+        ],
+    )
+
+
+def logo(kind: str = "logo", class_name: str = "") -> html.Span:
+    """The GliaAnalysis logo in both appearances; CSS shows the one that
+    matches the theme. ``kind``: "logo" (detailed mark, large sizes) or
+    "wordmark" (small-size mark, e.g. the sidebar). Built by
+    tools/make_logo.py."""
+    return html.Span(
+        className=f"glia-logo {class_name}".strip(),
+        children=[
+            html.Img(src=f"/assets/{kind}-light.svg", alt="GliaAnalysis",
+                     className="logo-light"),
+            html.Img(src=f"/assets/{kind}-dark.svg", alt="GliaAnalysis",
+                     className="logo-dark"),
+        ],
+    )
+
+
+def start_panel() -> html.Div:
+    """Shown on Setup › Prepare while no project folder is open."""
+    return html.Div(
+        className="start-panel",
+        children=[
+            logo("logo", "start-logo"),
+            html.Div("Microglia and astrocyte morphometry",
+                     className="start-tagline"),
+            html.P(
+                "Open a folder of microscopy images to begin. The Prepare "
+                "step accepts TIFF, OME-TIFF, CZI, ND2, LIF and Olympus VSI "
+                "(converted with FIJI Bio-Formats) and writes 8-bit "
+                "single-channel TIFFs to _gliaanalysis/Prepared/ for the "
+                "rest of the pipeline.",
+                className="start-text",
+            ),
+            # Clicks the toolbar's Open project… button (assets/app_shell.js)
+            html.Button("Open project…", id="start-open-project",
+                        className="btn btn-ned-primary btn-lg"),
         ],
     )
 
@@ -167,9 +210,7 @@ def roi_include_control(
     return html.Div([
         html.Label("ROIs to include",
                    style={"fontSize": "0.72rem",
-                          "color": "var(--ned-text-muted)",
-                          "textTransform": "uppercase",
-                          "letterSpacing": "0.5px"}),
+                          "color": "var(--ned-text-muted)"}),
         dcc.Dropdown(id=control_id,
                      options=[{"label": str(t), "value": str(t)}
                               for t in (tags or [])],
@@ -192,29 +233,31 @@ def alert(message: str, variant: str = "info") -> html.Div:
 
 
 # ── Plotly figure defaults ────────────────────────────────────────────
+#
+# One palette for every on-screen figure, matching the app theme in
+# assets/style.css (warm paper in light mode, cool near-black in dark, one
+# cyan accent). Exported figures keep their own colours.
 
-_FONT = "IBM Plex Sans, sans-serif"
+FONT = ("-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, "
+        "Cantarell, Ubuntu, 'Noto Sans', sans-serif")
+FONT_MONO = ("ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, "
+             "'DejaVu Sans Mono', monospace")
 
-_PLOTLY_DARK = {
-    "paper_bgcolor": "#1c2128",
-    "plot_bgcolor": "#0f1117",
-    "font_color": "#e6edf3",
-    "gridcolor": "#2d333b",
-    "colorway": [
-        "#58a6ff", "#3fb950", "#d29922", "#f85149",
-        "#bc8cff", "#f778ba", "#79c0ff", "#56d364",
-    ],
-}
-
-_PLOTLY_LIGHT = {
-    "paper_bgcolor": "#ffffff",
-    "plot_bgcolor": "#f6f8fa",
-    "font_color": "#1f2328",
-    "gridcolor": "#d0d7de",
-    "colorway": [
-        "#0969da", "#1a7f37", "#9a6700", "#cf222e",
-        "#8250df", "#bf3989", "#0550ae", "#116329",
-    ],
+_PALETTES = {
+    "light": dict(
+        paper="#fcfbf8", plot="#fcfbf8", fg="#15171b", muted="#55585f",
+        grid="#e4e2dc", accent="#13788c", ok="#2f8a4f", warn="#c27a12",
+        pos="#b5332a", neg="#2f6db5", ns="#9a9ca3",
+        colorway=["#13788c", "#c46a1a", "#4f7f3a", "#b5332a",
+                  "#6a4fb0", "#b0477d", "#2f6db5", "#8a7a2c"],
+    ),
+    "dark": dict(
+        paper="#161a1f", plot="#161a1f", fg="#e6e8ec", muted="#9ba2ad",
+        grid="#272c33", accent="#6cc3d5", ok="#6cc28a", warn="#e8a35c",
+        pos="#f0857c", neg="#86aef0", ns="#6b717b",
+        colorway=["#6cc3d5", "#e8a35c", "#8cc477", "#f0857c",
+                  "#b49cf0", "#e98bbd", "#86aef0", "#d1c06a"],
+    ),
 }
 
 _current_theme = "light"
@@ -225,14 +268,26 @@ def set_plotly_theme(theme: str) -> None:
     _current_theme = theme
 
 
-def apply_fig_theme(fig):
-    p = _PLOTLY_DARK if _current_theme == "dark" else _PLOTLY_LIGHT
+def fig_palette(theme: str | None = None) -> dict:
+    """Colours for a Plotly figure in the given theme ('light' / 'dark').
+
+    Keys: paper, plot, fg, muted, grid, accent, ok, warn, pos, neg, ns,
+    colorway (8 series colours), font.
+    """
+    t = theme or _current_theme or "light"
+    p = dict(_PALETTES["dark" if t == "dark" else "light"])
+    p["font"] = FONT
+    return p
+
+
+def apply_fig_theme(fig, theme: str | None = None, size: int = 12):
+    """Paper, plot area, font and grid colours of the current theme."""
+    p = fig_palette(theme)
     fig.update_layout(
-        paper_bgcolor=p["paper_bgcolor"],
-        plot_bgcolor=p["plot_bgcolor"],
-        font=dict(color=p["font_color"], family=_FONT, size=12),
-        xaxis=dict(gridcolor=p["gridcolor"], zerolinecolor=p["gridcolor"]),
-        yaxis=dict(gridcolor=p["gridcolor"], zerolinecolor=p["gridcolor"]),
-        margin=dict(l=60, r=20, t=40, b=40),
+        paper_bgcolor=p["paper"],
+        plot_bgcolor=p["plot"],
+        font=dict(color=p["fg"], family=FONT, size=size),
     )
+    fig.update_xaxes(gridcolor=p["grid"], zerolinecolor=p["grid"])
+    fig.update_yaxes(gridcolor=p["grid"], zerolinecolor=p["grid"])
     return fig

@@ -1,4 +1,7 @@
-"""Setup → Threshold subtab — FIJI executable, thresholding params, preview."""
+"""Setup → Threshold subtab — thresholding params and preview.
+
+(The FIJI executable is set on the Settings page.)
+"""
 
 from __future__ import annotations
 
@@ -20,7 +23,6 @@ from glia.config import (
     DEFAULT_THRESHOLD_METHODS_GLOBAL,
     DEFAULT_THRESHOLD_METHODS_LOCAL,
 )
-from glia.fiji_runner import discover_fiji
 from glia.preprocess import (
     MANUAL_METHOD,
     apply_threshold,
@@ -32,7 +34,7 @@ from glia.preprocess import (
 from glia.prepare import prepared_dir
 from glia.roi import shape_anchor, union_mask
 from glia_dash import server_state
-from glia_dash.components import alert, browse_file, empty_state
+from glia_dash.components import FONT, alert, empty_state, fig_palette
 
 
 # Tiny mtime-aware image cache so we don't re-read disk on every tweak,
@@ -100,15 +102,13 @@ def _render_image_chips(folder: str, current_path: str,
     images = _list_project_images(folder, mode)
     if not images:
         return [html.Span(
-            "Load a project folder from the sidebar to scrub through images.",
+            "Open a project folder to scrub through images.",
             style={"fontSize": "0.82rem",
                    "color": "var(--ned-text-muted)"})]
     return [
         html.Span("Image:",
                   style={"fontSize": "0.72rem",
                          "color": "var(--ned-text-muted)",
-                         "textTransform": "uppercase",
-                         "letterSpacing": "0.5px",
                          "marginRight": "8px"}),
         *[
             html.Button(
@@ -131,7 +131,6 @@ def threshold_layout(sid: str | None) -> html.Div:
     ROI subtab in a dbc.Tabs container.
     """
     state = server_state.get_session(sid)
-    fiji_default = state.fiji_path or (discover_fiji() or "")
 
     methods_global = DEFAULT_THRESHOLD_METHODS_GLOBAL
     methods_local = DEFAULT_THRESHOLD_METHODS_LOCAL
@@ -148,21 +147,6 @@ def threshold_layout(sid: str | None) -> html.Div:
         state.extra["preview_image_path"] = preview_path
 
     return html.Div([
-        html.Div([
-            html.Label("FIJI executable", className="form-label",
-                       style={"fontSize": "0.82rem",
-                              "color": "var(--ned-text-muted)"}),
-            html.Div([
-                dcc.Input(id="setup-fiji-path", type="text",
-                          value=fiji_default,
-                          placeholder="/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx",
-                          style={"flex": "1"}),
-                dbc.Button("Browse…", id="setup-fiji-browse",
-                           className="btn-ned-secondary",
-                           style={"marginLeft": "8px"}),
-            ], style={"display": "flex", "alignItems": "center"}),
-        ], style={"marginBottom": "24px"}),
-
         # Clickable chip row of every image in the project folder. The
         # currently-previewed image is highlighted with .selected.
         html.Div(id="setup-image-chip-row",
@@ -179,9 +163,7 @@ def threshold_layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Kind",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dbc.RadioItems(
                     id="setup-threshold-kind",
                     options=[
@@ -195,9 +177,7 @@ def threshold_layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Method",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(
                     id="setup-threshold-method",
                     options=[{"label": m, "value": m} for m in initial_methods],
@@ -215,9 +195,7 @@ def threshold_layout(sid: str | None) -> html.Div:
                          html.Label("Local radius (px)",
                                     style={"fontSize": "0.72rem",
                                            "color":
-                                               "var(--ned-text-muted)",
-                                           "textTransform": "uppercase",
-                                           "letterSpacing": "0.5px"}),
+                                               "var(--ned-text-muted)"}),
                          dcc.Input(id="setup-local-radius",
                                    type="number", min=1,
                                    value=state.local_radius,
@@ -227,9 +205,7 @@ def threshold_layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Preprocess",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dbc.Switch(id="setup-preprocess",
                            label="FIJI chain",
                            value=state.preprocess,
@@ -239,9 +215,7 @@ def threshold_layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Area min (px²)",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Input(id="setup-area-min", type="number", min=0,
                           value=state.area_min, style={"width": "100px"}),
             ], style={"marginRight": "24px"}),
@@ -249,9 +223,7 @@ def threshold_layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Area max (px²)",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Input(id="setup-area-max", type="number", min=0,
                           value=state.area_max, style={"width": "100px"}),
             ]),
@@ -267,9 +239,7 @@ def threshold_layout(sid: str | None) -> html.Div:
                  children=[
                      html.Label("Threshold band (releasing the handle redraws)",
                                 style={"fontSize": "0.72rem",
-                                       "color": "var(--ned-text-muted)",
-                                       "textTransform": "uppercase",
-                                       "letterSpacing": "0.5px"}),
+                                       "color": "var(--ned-text-muted)"}),
                      dcc.RangeSlider(
                          id="setup-threshold-slider",
                          min=0, max=255, step=1,
@@ -634,7 +604,7 @@ def render_preview(path, method, kind, slider, local_radius, preprocess,
     log_widths = np.diff(log_edges)
     hist = go.Figure(go.Bar(
         x=log_centers, y=counts, width=log_widths,
-        marker_color="#0969da" if (theme or "light") == "light" else "#58a6ff",
+        marker_color=fig_palette(theme)["accent"],
         hovertemplate=("Area %{customdata[0]:,.0f}–%{customdata[1]:,.0f} px²"
                        "<br>Count %{y}<extra></extra>"),
         customdata=np.column_stack([10**log_edges[:-1], 10**log_edges[1:]]),
@@ -662,21 +632,20 @@ def render_preview(path, method, kind, slider, local_radius, preprocess,
 
     if area_min and area_min > 0:
         hist.add_vline(x=float(np.log10(area_min)),
-                       line_color="#3fb950", line_dash="dash",
+                       line_color=fig_palette(theme)["ok"], line_dash="dash",
                        annotation_text="min", annotation_position="top")
     if area_max and area_max > 0:
         hist.add_vline(x=float(np.log10(area_max)),
-                       line_color="#d29922", line_dash="dash",
+                       line_color=fig_palette(theme)["warn"], line_dash="dash",
                        annotation_text="max", annotation_position="top")
 
     # Apply dark/light Plotly theme manually since glia_dash.components helper
     # holds module-level state we can't be sure was set on this request path.
-    bg, plot_bg, fg, grid = ("#ffffff", "#f6f8fa", "#1f2328", "#d0d7de") \
-        if (theme or "light") == "light" \
-        else ("#1c2128", "#0f1117", "#e6edf3", "#2d333b")
+    _p = fig_palette(theme)
+    bg, plot_bg, fg, grid = _p["paper"], _p["plot"], _p["fg"], _p["grid"]
     for f in (fig_orig, fig_bin, hist):
         f.update_layout(paper_bgcolor=bg, plot_bgcolor=plot_bg,
-                        font=dict(color=fg, family="IBM Plex Sans, sans-serif",
+                        font=dict(color=fg, family=FONT,
                                   size=11))
         f.update_xaxes(gridcolor=grid)
         f.update_yaxes(gridcolor=grid)

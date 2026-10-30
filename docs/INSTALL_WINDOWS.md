@@ -41,7 +41,7 @@ contains `app.py` and `requirements-lock.txt`.
 
 1. **Python 3.13 (64-bit) from python.org** — *not* the Microsoft Store
    build and *not* a minimal conda env.
-   - Reason: the **"Browse folder…"** picker relies on `tkinter`, which the
+   - Reason: the **"Open project…"** picker relies on `tkinter`, which the
      python.org installer includes but the Store build often omits. With
      python.org Python this works out of the box.
    - During install, tick **"Add python.exe to PATH"**.
@@ -104,13 +104,13 @@ python app.py
 
 Open **http://127.0.0.1:8050** in a browser. Then:
 
-1. **Sidebar → Mode**: pick *Microglia* or *Astrocyte* (re-select after each
+1. **Sidebar → Microglia / Astrocyte** switch: pick the cell type (re-select after each
    restart — mode isn't persisted yet).
-2. **Sidebar → Browse folder…**: select the project folder (the one with
+2. **Toolbar → Open project…**: select the project folder (the one with
    your images / `.gliaanalysis_*` files).
-3. **Setup → Threshold → FIJI path**: paste the full path to the FIJI
-   executable from step 1.2 (the field is a text box — paste it directly;
-   FIJI is not auto-discovered on Windows).
+3. **Settings → FIJI executable** (bottom of the sidebar, or Ctrl+,): paste
+   the full path to the FIJI executable from step 1.2, or use **Browse…** and
+   pick the Fiji folder (FIJI is not auto-discovered on Windows).
 
 ---
 
@@ -122,7 +122,7 @@ Tick each; if one fails, copy the exact on-screen / terminal message.
 - [ ] `pip install -r requirements-lock.txt` completes with **no**
       "Building wheel for …" / compiler step.
 - [ ] `python app.py` starts and the dashboard loads at `127.0.0.1:8050`.
-- [ ] **Browse folder…** opens a native dialog and the project loads
+- [ ] **Open project…** opens a native dialog and the project loads
       (this is the main Windows-specific risk — it exercises `tkinter`).
 - [ ] **Setup → Threshold**: pasting the FIJI `.exe` path shows no
       "executable not found / points to a folder" warning.
@@ -145,7 +145,7 @@ Tick each; if one fails, copy the exact on-screen / terminal message.
 These are documented, not yet fixed in code:
 
 - **Project folder needs the native dialog.** There is no "paste a path"
-  field for the project folder yet — only **Browse folder…**. With
+  field for the project folder yet — only **Open project…**. With
   python.org Python this works; if the button does nothing, `tkinter` is
   missing (Store/conda Python) — reinstall Python from python.org.
 - **FIJI is not auto-discovered** on Windows; paste the path manually (the

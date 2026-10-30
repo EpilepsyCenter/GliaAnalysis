@@ -83,13 +83,13 @@ def layout(sid: str | None) -> html.Div:
     if not project or not Path(project).is_dir():
         return html.Div([
             html.H4("Segment", style={"marginBottom": "16px"}),
-            alert("Pick a project folder from the sidebar first.",
+            alert("Open a project folder first (Open project… in the toolbar, ⌘O).",
                   variant="warning"),
         ])
     if not fiji or not Path(fiji).exists():
         return html.Div([
             html.H4("Segment", style={"marginBottom": "16px"}),
-            alert("Set a valid FIJI executable in Setup → Threshold first.",
+            alert("Set a valid FIJI executable in Settings first.",
                   variant="warning"),
         ])
 

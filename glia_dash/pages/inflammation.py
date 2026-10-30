@@ -47,6 +47,7 @@ from glia.inflammation_index import (
 from glia.metadata import available_roi_tags, filter_by_roi_tags
 from glia_dash import server_state
 from glia_dash.components import (
+    fig_palette, FONT,
     alert, empty_state, metric_card, roi_include_control,
 )
 
@@ -56,15 +57,7 @@ _ID_LIKE = {"ID", "roi_tag", "cell_index", "Cluster",
 
 
 def _theme_palette(theme: str) -> dict:
-    if (theme or "light") == "light":
-        return dict(paper="#ffffff", plot="#f6f8fa", fg="#1f2328",
-                    grid="#d0d7de",
-                    colorway=["#0969da", "#1a7f37", "#9a6700", "#cf222e",
-                              "#8250df", "#bf3989", "#0550ae", "#116329"])
-    return dict(paper="#1c2128", plot="#0f1117", fg="#e6edf3",
-                grid="#2d333b",
-                colorway=["#58a6ff", "#3fb950", "#d29922", "#f85149",
-                          "#bc8cff", "#f778ba", "#79c0ff", "#56d364"])
+    return fig_palette(theme)
 
 
 def _metadata_candidates(df: pd.DataFrame) -> list[str]:
@@ -203,9 +196,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Group by",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(
                     id="ii-treatment-col",
                     options=[{"label": c, "value": c} for c in meta_cols],
@@ -217,9 +208,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Control group",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="ii-control-group",
                              options=[], value=None, clearable=False,
                              style={"width": "200px"}),
@@ -227,9 +216,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Comparator group",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="ii-comparator-group",
                              options=[], value=None, clearable=False,
                              style={"width": "200px"}),
@@ -237,9 +224,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Max features",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Input(id="ii-max-size", type="number",
                           min=DEFAULT_MIN_SUBSET_SIZE,
                           max=min(DEFAULT_MAX_SUBSET_SIZE, len(feats)),
@@ -529,7 +514,7 @@ def _build_hist(scored: pd.DataFrame, treatment_col: str,
         barmode="overlay",
         margin=dict(l=48, r=20, t=24, b=36), height=380,
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
-        font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif",
+        font=dict(color=p["fg"], family=FONT,
                   size=11),
         xaxis=dict(title="Inflammation Index", gridcolor=p["grid"]),
         yaxis=dict(title="Cell count", gridcolor=p["grid"]),
@@ -564,7 +549,7 @@ def _build_animal_strip(scored: pd.DataFrame, treatment_col: str,
     fig.update_layout(
         margin=dict(l=48, r=20, t=24, b=36), height=380,
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
-        font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif",
+        font=dict(color=p["fg"], family=FONT,
                   size=11),
         xaxis=dict(title=treatment_col, gridcolor=p["grid"]),
         yaxis=dict(title="Animal-level mean II", gridcolor=p["grid"]),
@@ -587,8 +572,8 @@ def _build_feature_table(model: InflammationModel,
             html.Td(feat),
             html.Td(f"{signed:+.3f}", style={"fontFamily": "monospace"}),
             html.Td(direction,
-                    style={"color": ("#3fb950" if signed > 0
-                                     else "#f85149"),
+                    style={"color": ("var(--ned-success)" if signed > 0
+                                     else "var(--ned-danger)"),
                            "fontSize": "0.82rem"}),
         ]))
     return html.Div([

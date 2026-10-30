@@ -20,7 +20,7 @@ import dash_bootstrap_components as dbc
 
 from glia.radial import analyze_radial, dapi_centroid
 from glia_dash import server_state
-from glia_dash.components import empty_state
+from glia_dash.components import FONT, FONT_MONO, empty_state, fig_palette
 
 
 # Tiny mtime-aware mask cache so re-rendering the same cell with a new
@@ -94,8 +94,6 @@ def _render_cell_list(project_dir: str, current_path: str) -> list:
             f"{len(cells)} cell{'s' if len(cells) != 1 else ''}",
             style={"fontSize": "0.72rem",
                    "color": "var(--ned-text-muted)",
-                   "textTransform": "uppercase",
-                   "letterSpacing": "0.5px",
                    "padding": "4px 8px",
                    "borderBottom": "1px solid var(--ned-border)"},
         ),
@@ -119,7 +117,7 @@ def _render_cell_list(project_dir: str, current_path: str) -> list:
                        "color": "var(--ned-text)",
                        "fontSize": "0.78rem",
                        "fontFamily":
-                           "IBM Plex Mono, ui-monospace, monospace",
+                           FONT_MONO,
                        "cursor": "pointer",
                        "whiteSpace": "nowrap",
                        "overflow": "hidden",
@@ -183,9 +181,7 @@ def soma_layout(sid: str | None) -> html.Div:
         html.Div([
             html.Label("Gap tolerance (degrees)",
                        style={"fontSize": "0.72rem",
-                              "color": "var(--ned-text-muted)",
-                              "textTransform": "uppercase",
-                              "letterSpacing": "0.5px"}),
+                              "color": "var(--ned-text-muted)"}),
             dcc.Slider(
                 id="soma-gap-tol",
                 min=5, max=45, step=1,
@@ -357,11 +353,8 @@ def render_preview(path, gap_tol, theme, sid):
     except Exception as e:
         return _hide_preview(f"Radial analysis failed: {e}")
 
-    bg, plot_bg, fg, grid = (
-        ("#ffffff", "#f6f8fa", "#1f2328", "#d0d7de")
-        if (theme or "light") == "light"
-        else ("#1c2128", "#0f1117", "#e6edf3", "#2d333b")
-    )
+    _p = fig_palette(theme)
+    bg, plot_bg, fg, grid = _p["paper"], _p["plot"], _p["fg"], _p["grid"]
 
     # ── Mask + soma overlay figure ───────────────────────────────────
     # Stacking order (bottom → top):
@@ -477,7 +470,7 @@ def render_preview(path, gap_tol, theme, sid):
         title=dict(text=f"{Path(path).stem}  ({w}×{h} px)",
                    x=0.02, font=dict(size=11)),
         paper_bgcolor=bg, plot_bgcolor=plot_bg,
-        font=dict(color=fg, family="IBM Plex Sans, sans-serif", size=11),
+        font=dict(color=fg, family=FONT, size=11),
     )
     fig_mask.update_xaxes(visible=False, range=[0, w])
     fig_mask.update_yaxes(visible=False, range=[h, 0], scaleanchor="x",
@@ -504,7 +497,7 @@ def render_preview(path, gap_tol, theme, sid):
         xaxis_title="r (px from soma center)",
         yaxis_title="# intersections",
         paper_bgcolor=bg, plot_bgcolor=plot_bg,
-        font=dict(color=fg, family="IBM Plex Sans, sans-serif", size=11),
+        font=dict(color=fg, family=FONT, size=11),
     )
     fig_sholl.update_xaxes(gridcolor=grid)
     fig_sholl.update_yaxes(gridcolor=grid, rangemode="tozero")

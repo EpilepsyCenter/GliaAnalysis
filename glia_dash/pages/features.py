@@ -1,4 +1,4 @@
-"""Features page — compute the 27-feature per-cell table from Segment output."""
+"""Features page — compute the 36-feature per-cell table from Segment output."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from glia.features import (
     merge_geometric_and_skeleton,
 )
 from glia_dash import server_state
-from glia_dash.components import alert, metric_card
+from glia_dash.components import FONT, alert, metric_card
 
 
 _OUTPUT_SUBDIR = "_gliaanalysis"
@@ -35,7 +35,7 @@ _DEFAULT_VISIBLE = [
 # Themed cell / header styles for dash_table.DataTable so it doesn't fall
 # back to Bootstrap-DARKLY's default dark-on-dark.
 _TABLE_STYLE_CELL = {
-    "fontFamily": "IBM Plex Sans, sans-serif",
+    "fontFamily": FONT,
     "fontSize": "12px",
     "padding": "6px 10px",
     "backgroundColor": "var(--ned-surface)",
@@ -54,8 +54,6 @@ _TABLE_STYLE_HEADER = {
     "color": "var(--ned-text-muted)",
     "fontWeight": "600",
     "fontSize": "10.5px",
-    "textTransform": "uppercase",
-    "letterSpacing": "0.5px",
     "borderBottom": "2px solid var(--ned-border)",
     "padding": "8px 10px",
 }
@@ -77,7 +75,7 @@ def layout(sid: str | None) -> html.Div:
     if not project or not Path(project).is_dir():
         return html.Div([
             html.H4("Features", style={"marginBottom": "16px"}),
-            alert("Pick a project folder from the sidebar first.",
+            alert("Open a project folder first (Open project… in the toolbar, ⌘O).",
                   variant="warning"),
         ])
 
@@ -90,8 +88,8 @@ def layout(sid: str | None) -> html.Div:
         html.H4("Features", style={"marginBottom": "8px"}),
         html.Div(
             "Computes 18 FracLac-equivalent geometric features per cell and "
-            "joins them with the 9 skeleton features → one row per cell, "
-            "27 numeric columns + the cell ID.",
+            "joins them with 9 skeleton, 5 soma and 4 Sholl features → one "
+            "row per cell, 36 numeric columns + the cell ID.",
             style={"fontSize": "0.85rem",
                    "color": "var(--ned-text-muted)",
                    "marginBottom": "16px"},
@@ -167,9 +165,7 @@ def _render_preview(df):
             html.Div([
                 html.Label("Rows per page",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(
                     id="features-page-size",
                     options=[{"label": str(n), "value": n}
@@ -181,9 +177,7 @@ def _render_preview(df):
             html.Div([
                 html.Label("Visible columns",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(
                     id="features-visible-cols",
                     options=[{"label": c, "value": c} for c in all_cols],

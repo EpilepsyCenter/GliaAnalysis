@@ -29,7 +29,7 @@ from dash import ALL, Input, Output, State, callback, ctx, dcc, html, no_update
 from glia.prepare import prepared_dir
 from glia.roi import save_project_rois, shape_anchor
 from glia_dash import server_state
-from glia_dash.components import empty_state
+from glia_dash.components import FONT, fig_palette, empty_state
 
 
 _IMAGE_CACHE: dict[str, tuple[float, np.ndarray]] = {}
@@ -156,8 +156,8 @@ def roi_layout(sid: str | None) -> html.Div:
                  f"{os.path.basename(current_path)}") if images else ""
 
     banner = (empty_state(icon="📁", title="No project folder loaded",
-                          text=("Pick a folder from the sidebar "
-                                "(Browse folder…) containing the TIFFs you "
+                          text=("Open a project folder (Open project… in "
+                                "the toolbar) containing the TIFFs you "
                                 "want to analyze. ROI drawing happens here, "
                                 "image by image, before thresholding."))
               if no_folder else None)
@@ -275,9 +275,7 @@ def _render_tag_chips(tags: list[str]) -> list:
         html.Span("Reuse tag:",
                   style={"fontSize": "0.78rem",
                          "color": "var(--ned-text-muted)",
-                         "marginRight": "8px",
-                         "textTransform": "uppercase",
-                         "letterSpacing": "0.5px"}),
+                         "marginRight": "8px"}),
         *[
             html.Button(
                 t, id={"type": "roi-tag-chip", "tag": t},
@@ -321,8 +319,6 @@ def _render_roi_list(rois: list[dict]) -> html.Div:
         html.Div("ROIs on this image:",
                  style={"fontSize": "0.78rem",
                         "color": "var(--ned-text-muted)",
-                        "textTransform": "uppercase",
-                        "letterSpacing": "0.5px",
                         "marginBottom": "6px"}),
         *rows,
     ])
@@ -361,11 +357,10 @@ def _image_figure(path: str, theme: str, rois: list[dict],
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
 
-    bg, plot_bg, fg, grid = ("#ffffff", "#f6f8fa", "#1f2328", "#d0d7de") \
-        if (theme or "light") == "light" \
-        else ("#1c2128", "#0f1117", "#e6edf3", "#2d333b")
+    _p = fig_palette(theme)
+    bg, plot_bg, fg, grid = _p["paper"], _p["plot"], _p["fg"], _p["grid"]
     fig.update_layout(paper_bgcolor=bg, plot_bgcolor=plot_bg,
-                      font=dict(color=fg, family="IBM Plex Sans, sans-serif",
+                      font=dict(color=fg, family=FONT,
                                 size=11))
     return fig
 

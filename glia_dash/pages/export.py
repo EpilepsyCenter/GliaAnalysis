@@ -112,8 +112,6 @@ def layout(sid: str | None) -> html.Div:
         html.Div("Downloads",
                  style={"fontSize": "0.72rem",
                         "color": "var(--ned-text-muted)",
-                        "textTransform": "uppercase",
-                        "letterSpacing": "0.5px",
                         "marginBottom": "6px"}),
         html.Div([
             html.Button("ColorByCluster.csv",
@@ -134,8 +132,6 @@ def layout(sid: str | None) -> html.Div:
         html.Div("Write to project",
                  style={"fontSize": "0.72rem",
                         "color": "var(--ned-text-muted)",
-                        "textTransform": "uppercase",
-                        "letterSpacing": "0.5px",
                         "marginBottom": "6px"}),
         html.Div([
             html.Button("Write all to disk",

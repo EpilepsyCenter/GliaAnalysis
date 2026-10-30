@@ -13,7 +13,7 @@ from scipy.stats import spearmanr
 from glia.config import ALL_FEATURES, ASTROCYTE_FEATURES, DERIVED_FEATURES
 from glia.transforms import apply_transform
 from glia_dash import server_state
-from glia_dash.components import alert, metric_card
+from glia_dash.components import fig_palette, FONT, alert, metric_card
 
 
 _TRANSFORMS = ("none", "log", "zscore", "minmax")
@@ -168,9 +168,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Transform",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dbc.RadioItems(id="explore-transform",
                                options=[{"label": t, "value": t}
                                         for t in _TRANSFORMS],
@@ -181,9 +179,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Group by",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="explore-group",
                              options=grouping_opts,
                              value=default_group, clearable=False,
@@ -193,9 +189,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Split by",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="explore-split",
                              options=grouping_opts,
                              value=default_split, clearable=True,
@@ -206,9 +200,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Features to plot",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="explore-features",
                              options=[{"label": c, "value": c}
                                       for c in feats],
@@ -219,9 +211,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Show points",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dbc.Switch(id="explore-show-points",
                            label="overlay individual cells",
                            value=show_points_default,
@@ -276,17 +266,7 @@ def layout(sid: str | None) -> html.Div:
 
 
 def _theme_palette(theme: str) -> dict:
-    if (theme or "light") == "light":
-        return dict(paper="#ffffff", plot="#f6f8fa", fg="#1f2328",
-                    grid="#d0d7de", colorway=[
-                        "#0969da", "#1a7f37", "#9a6700", "#cf222e",
-                        "#8250df", "#bf3989", "#0550ae", "#116329",
-                    ])
-    return dict(paper="#1c2128", plot="#0f1117", fg="#e6edf3",
-                grid="#2d333b", colorway=[
-                    "#58a6ff", "#3fb950", "#d29922", "#f85149",
-                    "#bc8cff", "#f778ba", "#79c0ff", "#56d364",
-                ])
+    return fig_palette(theme)
 
 
 def _build_distributions(df: pd.DataFrame, features: list[str],
@@ -518,7 +498,7 @@ def _build_distributions(df: pd.DataFrame, features: list[str],
     fig.update_layout(
         margin=dict(l=48, r=20, t=36, b=28),
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
-        font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif", size=11),
+        font=dict(color=p["fg"], family=FONT, size=11),
         bargap=0.18 if has_split else 0.30,
         bargroupgap=0.06,
         barmode="overlay",  # bars already positioned manually
@@ -566,7 +546,7 @@ def _build_correlations(df: pd.DataFrame, theme: str,
     fig.update_layout(
         margin=dict(l=140, r=20, t=20, b=140),
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
-        font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif",
+        font=dict(color=p["fg"], family=FONT,
                   size=10),
     )
     fig.update_xaxes(tickangle=-45, automargin=True, side="bottom",

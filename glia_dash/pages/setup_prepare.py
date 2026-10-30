@@ -32,7 +32,9 @@ from glia.vsi_convert import (
     VSI_EXTENSIONS, ensure_vsi_converted, list_vsi_files, resolve_source,
 )
 from glia_dash import server_state
-from glia_dash.components import alert, empty_state, metric_card
+from glia_dash.components import (
+    alert, metric_card, start_panel,
+)
 from glia_dash.pages.features import (
     _TABLE_STYLE_CELL, _TABLE_STYLE_DATA_CONDITIONAL,
     _TABLE_STYLE_HEADER, _TABLE_STYLE_TABLE,
@@ -278,19 +280,7 @@ def prepare_layout(sid: str | None) -> html.Div:
     project = state.project_dir
 
     if not project or not Path(project).is_dir():
-        return html.Div([
-            empty_state(
-                icon="📁",
-                title="No project folder loaded",
-                text=("Pick a folder from the sidebar (Browse folder…) "
-                      "containing your microscopy images. The Prepare "
-                      "step accepts TIFF, OME-TIFF, CZI, ND2, LIF, and "
-                      "Olympus VSI (converted via FIJI Bio-Formats); "
-                      "it writes 8-bit single-channel TIFFs to "
-                      "_gliaanalysis/Prepared/ for the rest of the "
-                      "pipeline."),
-            ),
-        ])
+        return start_panel()
 
     sources = list_source_files(project)
     mode = getattr(state, "mode", "microglia") or "microglia"
@@ -456,9 +446,7 @@ def prepare_layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Default channel (batch)",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="prepare-default-channel",
                              options=channel_options,
                              value=default_channel_name,
@@ -468,9 +456,7 @@ def prepare_layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Default DAPI channel (batch)",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="prepare-default-dapi-channel",
                              options=dapi_channel_options,
                              value=default_dapi_name,
@@ -482,9 +468,7 @@ def prepare_layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Default Z mode (batch)",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="prepare-default-z",
                              options=list(_Z_OPTIONS),
                              value=default_z, clearable=False,

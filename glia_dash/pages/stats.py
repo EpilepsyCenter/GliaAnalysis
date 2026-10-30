@@ -21,7 +21,9 @@ from glia.stats import (
 )
 from glia.metadata import available_roi_tags, filter_by_roi_tags
 from glia_dash import server_state
-from glia_dash.components import alert, metric_card, roi_include_control
+from glia_dash.components import (
+    FONT, alert, fig_palette, metric_card, roi_include_control,
+)
 from glia_dash.pages.features import (
     _TABLE_STYLE_CELL, _TABLE_STYLE_DATA_CONDITIONAL,
     _TABLE_STYLE_HEADER, _TABLE_STYLE_TABLE,
@@ -78,9 +80,7 @@ def _group_sizes_panel(sizes_df: pd.DataFrame, min_n: int) -> html.Div:
         chips.append(html.Div([
             html.Div(label,
                      style={"fontSize": "0.72rem",
-                            "color": "var(--ned-text-muted)",
-                            "textTransform": "uppercase",
-                            "letterSpacing": "0.5px"}),
+                            "color": "var(--ned-text-muted)"}),
             html.Div([
                 html.Span(str(n),
                           style={"fontSize": "1.4rem",
@@ -109,8 +109,6 @@ def _group_sizes_panel(sizes_df: pd.DataFrame, min_n: int) -> html.Div:
         html.Div("Group sizes",
                  style={"fontSize": "0.72rem",
                         "color": "var(--ned-text-muted)",
-                        "textTransform": "uppercase",
-                        "letterSpacing": "0.5px",
                         "marginBottom": "6px"}),
         html.Div(chips, style={"display": "flex",
                                "flexWrap": "wrap",
@@ -394,9 +392,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Animal ID column",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="stats-animal-id",
                              options=[{"label": c, "value": c}
                                       for c in meta_cols],
@@ -408,9 +404,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Experimental factors",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="stats-factors",
                              options=[{"label": c, "value": c}
                                       for c in meta_cols],
@@ -421,9 +415,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Method",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="stats-method",
                              options=[
                                  {"label": "ANOVA (parametric)",
@@ -440,9 +432,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Post-hoc correction",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="stats-padjust",
                              options=[{"label": p, "value": p}
                                       for p in _PADJUST_OPTIONS],
@@ -457,9 +447,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Features to test",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Dropdown(id="stats-features",
                              options=[{"label": c, "value": c}
                                       for c in feats],
@@ -618,13 +606,7 @@ def _interpretation_panel() -> html.Div:
 
 
 def _theme_palette(theme: str) -> dict:
-    if (theme or "light") == "light":
-        return dict(paper="#ffffff", plot="#f6f8fa", fg="#1f2328",
-                    grid="#d0d7de", muted="#656d76",
-                    pos="#cf222e", neg="#0969da", ns="#8c959f")
-    return dict(paper="#1c2128", plot="#0f1117", fg="#e6edf3",
-                grid="#2d333b", muted="#8b949e",
-                pos="#f85149", neg="#58a6ff", ns="#6e7681")
+    return fig_palette(theme)
 
 
 def _lmm_table_for_plots(fixed_df: pd.DataFrame) -> pd.DataFrame:
@@ -712,7 +694,7 @@ def _build_forest(fixed_df: pd.DataFrame, theme: str,
         margin=dict(l=240, r=40, t=18, b=40),
         height=height,
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
-        font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif",
+        font=dict(color=p["fg"], family=FONT,
                   size=10),
         xaxis=dict(title="coefficient (95% CI)",
                    gridcolor=p["grid"], zerolinecolor=p["grid"]),
@@ -815,7 +797,7 @@ def _build_pairwise_volcano(post_df: pd.DataFrame, theme: str) -> go.Figure:
     fig.update_layout(
         margin=dict(l=56, r=16, t=20, b=44), height=380,
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
-        font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif",
+        font=dict(color=p["fg"], family=FONT,
                   size=11),
         xaxis=dict(title="Hedges' g (effect size)",
                    gridcolor=p["grid"], zerolinecolor=p["grid"]),
@@ -878,7 +860,7 @@ def _build_pairwise_forest(post_df: pd.DataFrame, theme: str) -> go.Figure:
         margin=dict(l=260, r=40, t=18, b=40),
         height=height,
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
-        font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif",
+        font=dict(color=p["fg"], family=FONT,
                   size=10),
         xaxis=dict(title="Hedges' g", gridcolor=p["grid"],
                    zerolinecolor=p["grid"]),
@@ -928,7 +910,7 @@ def _build_volcano(fixed_df: pd.DataFrame, theme: str) -> go.Figure:
     fig.update_layout(
         margin=dict(l=56, r=16, t=20, b=44), height=380,
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
-        font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif",
+        font=dict(color=p["fg"], family=FONT,
                   size=11),
         xaxis=dict(title="coefficient (effect size)",
                    gridcolor=p["grid"], zerolinecolor=p["grid"]),
@@ -945,8 +927,6 @@ def _formula_panel(formula: str, n_obs: int, n_animals: int) -> html.Div:
     return html.Div([
         html.Div("Model", style={"fontSize": "0.72rem",
                                  "color": "var(--ned-text-muted)",
-                                 "textTransform": "uppercase",
-                                 "letterSpacing": "0.5px",
                                  "marginBottom": "4px"}),
         html.Pre(formula,
                  style={"fontSize": "0.82rem",
@@ -1054,8 +1034,6 @@ def _run_lmm(work, features, factors, animal, padjust, theme="light",
         html.Div("Reference levels",
                  style={"fontSize": "0.72rem",
                         "color": "var(--ned-text-muted)",
-                        "textTransform": "uppercase",
-                        "letterSpacing": "0.5px",
                         "marginBottom": "4px"}),
         html.Div(ref_chips, style={"display": "flex",
                                    "flexWrap": "wrap",

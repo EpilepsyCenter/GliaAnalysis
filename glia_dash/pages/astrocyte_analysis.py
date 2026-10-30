@@ -94,7 +94,7 @@ def layout(sid: str | None) -> html.Div:
     if not project or not Path(project).is_dir():
         return html.Div([
             html.H4("Astrocyte Analysis", style={"marginBottom": "16px"}),
-            alert("Pick a project folder from the sidebar first.",
+            alert("Open a project folder first (Open project… in the toolbar, ⌘O).",
                   variant="warning"),
         ])
 
@@ -138,9 +138,7 @@ def layout(sid: str | None) -> html.Div:
             html.Div([
                 html.Label("Soma-disk radius (px)",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Input(id="astro-soma-radius", type="number",
                           min=1, max=20, step=1,
                           value=int(state.extra.get(
@@ -232,8 +230,6 @@ def _render_summary(df: pd.DataFrame, project: str, *,
             html.Th(c, style={"textAlign": "left",
                               "fontSize": "0.72rem",
                               "color": "var(--ned-text-muted)",
-                              "textTransform": "uppercase",
-                              "letterSpacing": "0.5px",
                               "padding": "6px 8px",
                               "borderBottom":
                                   "2px solid var(--ned-border)"})
@@ -312,7 +308,7 @@ def on_threshold(n_clicks, sid):
     fiji_err = validate_fiji_path(state.fiji_path)
     if fiji_err:
         return alert(
-            f"{fiji_err}\nConfigure it in Setup → Threshold.",
+            f"{fiji_err}\nConfigure it in Settings.",
             variant="warning",
         )
 

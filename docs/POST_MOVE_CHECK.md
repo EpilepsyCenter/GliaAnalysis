@@ -58,10 +58,10 @@ python app.py
 
 ## 5. UI smoke test
 
-- [ ] **FIJI** is still configured (Setup → Threshold shows the path). It
+- [ ] **FIJI** is still configured (Settings shows the path, with "FIJI found."). It
   lives in `~/.gliaanalysis/defaults.json` (your home folder, not the
   project), so the move doesn't touch it.
-- [ ] **Browse folder…** opens a project (e.g. a folder under
+- [ ] **Open project…** opens a project (e.g. a folder under
   `sample_images/`, if you copied it) and it loads.
 - [ ] Setup tabs render; in astrocyte mode the sample project's **ROIs
   load**; **Stats → Download stats overview** and **Explore → Download raw

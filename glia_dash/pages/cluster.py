@@ -27,7 +27,7 @@ from glia.pca_cluster import (
 from glia.roi import per_roi_masks
 from glia.segment import DEFAULT_ROI_TAG
 from glia_dash import server_state
-from glia_dash.components import alert, metric_card
+from glia_dash.components import fig_palette, FONT_MONO, FONT, alert, metric_card
 
 
 _K_RANGE = range(2, 10)
@@ -38,17 +38,15 @@ def _feature_columns(df: pd.DataFrame) -> list[str]:
 
 
 def _theme_palette(theme: str) -> dict:
-    if (theme or "light") == "light":
-        return dict(paper="#ffffff", plot="#f6f8fa", fg="#1f2328",
-                    grid="#d0d7de", colorway=[
-                        "#0969da", "#1a7f37", "#9a6700", "#cf222e",
-                        "#8250df", "#bf3989", "#0550ae", "#116329",
-                    ])
-    return dict(paper="#1c2128", plot="#0f1117", fg="#e6edf3",
-                grid="#2d333b", colorway=[
-                    "#58a6ff", "#3fb950", "#d29922", "#f85149",
-                    "#bc8cff", "#f778ba", "#79c0ff", "#56d364",
-                ])
+    return fig_palette(theme)
+
+
+# Cluster colours of exported overlay images (fixed, independent of the
+# app theme).
+_EXPORT_PALETTE = dict(colorway=[
+    "#0969da", "#1a7f37", "#9a6700", "#cf222e",
+    "#8250df", "#bf3989", "#0550ae", "#116329",
+])
 
 
 # ── Layout ──────────────────────────────────────────────────────────
@@ -115,9 +113,7 @@ def _clustering_subtab(state, df: pd.DataFrame) -> html.Div:
             html.Div([
                 html.Label("PCA components",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Input(id="cluster-pca-n", type="number",
                           min=2, max=20, step=1,
                           value=int(state.pca_n_components),
@@ -126,9 +122,7 @@ def _clustering_subtab(state, df: pd.DataFrame) -> html.Div:
             html.Div([
                 html.Label("Clusters (k)",
                            style={"fontSize": "0.72rem",
-                                  "color": "var(--ned-text-muted)",
-                                  "textTransform": "uppercase",
-                                  "letterSpacing": "0.5px"}),
+                                  "color": "var(--ned-text-muted)"}),
                 dcc.Input(id="cluster-k", type="number",
                           min=2, max=10, step=1, value=int(state.k),
                           style={"width": "120px"}),
@@ -322,7 +316,7 @@ def _build_scan(scan: pd.DataFrame, k_chosen: int, theme: str) -> go.Figure:
     fig.update_layout(
         margin=dict(l=48, r=48, t=24, b=36), height=420,
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
-        font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif", size=11),
+        font=dict(color=p["fg"], family=FONT, size=11),
         xaxis=dict(title="k", gridcolor=p["grid"], dtick=1),
         yaxis=dict(title="Inertia", gridcolor=p["grid"]),
         yaxis2=dict(title="Silhouette", overlaying="y", side="right",
@@ -357,7 +351,7 @@ def _build_pca_scatter(df: pd.DataFrame, theme: str) -> go.Figure:
     fig.update_layout(
         margin=dict(l=48, r=20, t=20, b=36), height=420,
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
-        font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif", size=11),
+        font=dict(color=p["fg"], family=FONT, size=11),
         xaxis=dict(title="PC1", gridcolor=p["grid"],
                    zerolinecolor=p["grid"]),
         yaxis=dict(title="PC2", gridcolor=p["grid"],
@@ -385,7 +379,7 @@ def _build_cluster_heatmap(df: pd.DataFrame, theme: str) -> go.Figure:
     fig.update_layout(
         margin=dict(l=120, r=20, t=20, b=160), height=320,
         paper_bgcolor=p["paper"], plot_bgcolor=p["plot"],
-        font=dict(color=p["fg"], family="IBM Plex Sans, sans-serif", size=10),
+        font=dict(color=p["fg"], family=FONT, size=10),
     )
     fig.update_xaxes(tickangle=-45, automargin=True)
     fig.update_yaxes(automargin=True)
@@ -637,8 +631,6 @@ def _render_overlay_file_list(images: list[str], current: str) -> list:
             f"{len(images)} image{'s' if len(images) != 1 else ''}",
             style={"fontSize": "0.72rem",
                    "color": "var(--ned-text-muted)",
-                   "textTransform": "uppercase",
-                   "letterSpacing": "0.5px",
                    "padding": "4px 8px",
                    "borderBottom": "1px solid var(--ned-border)"},
         ),
@@ -662,7 +654,7 @@ def _render_overlay_file_list(images: list[str], current: str) -> list:
                        "color": "var(--ned-text)",
                        "fontSize": "0.78rem",
                        "fontFamily":
-                           "IBM Plex Mono, ui-monospace, monospace",
+                           FONT_MONO,
                        "cursor": "pointer",
                        "whiteSpace": "nowrap",
                        "overflow": "hidden",
@@ -693,12 +685,12 @@ def _interpretation_panel() -> html.Div:
         html.Div("How to read these plots",
                  style={"fontSize": "0.92rem",
                         "fontWeight": "600",
-                        "color": "var(--ned-text)",
-                        "letterSpacing": "0.3px"}),
+                        "color": "var(--ned-text)"}),
 
         html.Div("PCA in one paragraph", style=section_h),
         html.Div(
-            "Each cell is a point in 27-dimensional feature space (one "
+            f"Each cell is a point in {len(ALL_FEATURES)}-dimensional "
+            "feature space (one "
             "dimension per morphology measurement). PCA finds the axes "
             "along which cells differ from each other most. PC1 is the "
             "direction of greatest variance; PC2 is the next greatest, "
@@ -739,8 +731,9 @@ def _interpretation_panel() -> html.Div:
                  style=body),
 
         html.Div("Cluster mean feature heatmap", style=section_h),
-        html.Div("Each row is one cluster, each column is one of the 27 "
-                 "features. Cells are z-scored across clusters: ",
+        html.Div("Each row is one cluster, each column is one of the "
+                 f"{len(ALL_FEATURES)} features. Cells are z-scored across "
+                 "clusters: ",
                  style=body),
         html.Ul(style={**body, "paddingLeft": "20px", "marginTop": "0"},
                 children=[
@@ -1050,7 +1043,7 @@ def _composite_overlay_rgb(
     without the Plotly figure wrapping. Returns ``None`` if the
     thresholded image isn't available.
     """
-    p = _theme_palette("light")  # palette is fixed regardless of theme
+    p = _EXPORT_PALETTE  # exported overlays keep their colours
     img = tifffile.imread(image_path)
     th_path = _thresholded_path(project_dir, image_path)
     if not th_path.exists():
