@@ -6,7 +6,8 @@ Besides starting the desktop app, it covers what a bundled app lacks:
   app (glia_dash.file_dialogs._tk_frozen): ``--glia-run-script <code>``;
 - skan compiles its graph code with numba and caches it on disk; inside the
   bundle there is no writable place next to the code, so the cache goes to
-  a per-user folder (NUMBA_CACHE_DIR);
+  a per-user folder (NUMBA_CACHE_DIR); matplotlib's font cache likewise
+  (MPLCONFIGDIR), or it is rebuilt on every launch;
 - a windowed app has no console: output and errors go to a log file.
 """
 import multiprocessing
@@ -36,7 +37,15 @@ def main() -> None:
     multiprocessing.freeze_support()
 
     try:
-        os.environ.setdefault("NUMBA_CACHE_DIR", os.path.join(_user_dir("cache"), "numba"))
+        cache = _user_dir("cache")
+        os.environ.setdefault("NUMBA_CACHE_DIR", os.path.join(cache, "numba"))
+        # PyInstaller's matplotlib hook points MPLCONFIGDIR at a temporary
+        # folder that is deleted on exit, so matplotlib (imported via
+        # pingouin/seaborn) rebuilt its font cache on every launch: ~9 s.
+        # Overwrite it (the hook has already set it) with a folder that stays.
+        mpl = os.path.join(cache, "matplotlib")
+        os.makedirs(mpl, exist_ok=True)
+        os.environ["MPLCONFIGDIR"] = mpl
     except Exception:
         pass
 
