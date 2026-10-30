@@ -1,0 +1,135 @@
+name: Build desktop apps
+
+# Push a version tag (git tag v1.0.1 && git push origin v1.0.1) to build the app
+# on macOS, Windows and Linux and attach it to a GitHub release. "Run workflow"
+# on the Actions page builds the same files without a release (artifacts only).
+# The tag should match __version__ in glia_dash/__init__.py.
+# (After NED-Net's .github/workflows/build.yml.)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14          # Apple Silicon
+            platform: mac-arm64
+          - os: windows-latest
+            platform: windows-x64
+          - os: ubuntu-22.04
+            platform: linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'   # requirements-lock.txt is pinned for 3.13
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements-lock.txt
+            requirements-desktop.txt
+
+      - name: Linux libraries for the Qt web engine
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 \
+            libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libnss3 libxcomposite1 \
+            libxdamage1 libxrandr2 libxtst6 libasound2
+
+      - name: Install GliaAnalysis dependencies and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-lock.txt -r requirements-desktop.txt pyinstaller
+
+      - name: Tests
+        run: python -m pytest -q tests
+
+      - name: Version
+        id: v
+        shell: bash
+        run: echo "version=$(python -c 'import glia_dash as g; print(g.__version__)')" >> "$GITHUB_OUTPUT"
+
+      - name: Tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          test "${GITHUB_REF_NAME}" = "v${{ steps.v.outputs.version }}" || {
+            echo "Tag ${GITHUB_REF_NAME} does not match __version__ ${{ steps.v.outputs.version }}"; exit 1; }
+
+      - name: Build the app
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen   # Linux: no display on the runner
+        run: pyinstaller packaging/gliaanalysis.spec --noconfirm
+
+      - name: Package (macOS disk image)
+        if: runner.os == 'macOS'
+        run: |
+          out="dist/GliaAnalysis-${{ steps.v.outputs.version }}-mac-arm64.dmg"
+          for i in 1 2 3; do   # hdiutil is occasionally "busy" on CI
+            hdiutil create -volname "GliaAnalysis" -srcfolder dist/GliaAnalysis.app \
+              -ov -format UDZO "$out" && break
+            sleep 10
+          done
+          test -f "$out"
+
+      - name: Package (Windows installer)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.v.outputs.version }}" packaging\windows\gliaanalysis.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package (Linux archive)
+        if: runner.os == 'Linux'
+        run: tar -C dist -czf "dist/GliaAnalysis-${{ steps.v.outputs.version }}-linux-x64.tar.gz" GliaAnalysis
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GliaAnalysis-${{ matrix.platform }}
+          path: |
+            dist/*.dmg
+            dist/installer/*.exe
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          body: |
+            Desktop apps for macOS (Apple Silicon), Windows and Linux. No Python needed.
+            FIJI is not included: install [Fiji](https://fiji.sc) and point GliaAnalysis at it
+            in **Settings** (found automatically in `/Applications/Fiji.app` on macOS).
+
+            - **macOS:** open the `.dmg` and drag GliaAnalysis to Applications. The app is not
+              notarized: the first time, right-click it and choose **Open** (or allow it in
+              System Settings › Privacy & Security).
+            - **Windows:** run `GliaAnalysis-…-Setup.exe`. If SmartScreen warns, choose
+              **More info › Run anyway**. The first start can take a minute while the virus
+              scanner checks the app.
+            - **Linux:** unpack the `.tar.gz` and run `GliaAnalysis/GliaAnalysis`.

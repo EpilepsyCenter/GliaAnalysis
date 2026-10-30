@@ -42,7 +42,25 @@ scoring all run in Python — no R required.
 - Per-project persistence: ROIs, threshold settings, metadata, trained
   Inflammation Index, UI selections — all round-trip in `.gliaanalysis_settings.json`.
 
-## Installation
+## Download
+
+Installers for **macOS (Apple Silicon)**, **Windows** and **Linux** are on the
+[releases page](https://github.com/EpilepsyCenter/GliaAnalysis/releases/latest).
+No Python needed.
+
+- **macOS:** open the `.dmg` and drag GliaAnalysis to Applications. The app is
+  not notarized: the first time, right-click it and choose **Open**.
+- **Windows:** run `GliaAnalysis-…-Setup.exe` (installs for your user, no admin
+  rights). If SmartScreen warns, choose **More info › Run anyway**.
+- **Linux:** unpack the `.tar.gz` and run `GliaAnalysis/GliaAnalysis`.
+
+FIJI is not included. Install [Fiji](https://fiji.sc) and point GliaAnalysis at
+it in **Settings** (found automatically in `/Applications/Fiji.app` on macOS).
+
+Releases are built by `.github/workflows/build.yml` when a `v*` tag is pushed
+(`packaging/` holds the PyInstaller recipe and the Windows installer script).
+
+## Installation from source
 
 ### Prerequisites — all platforms
 
@@ -306,10 +324,10 @@ These files round-trip on folder reopen; nothing is lost between sessions.
 
 ## Status
 
-In active development. The pipelines are functional end-to-end; expect occasional
-sharp edges. Report issues at
+Version 1.0.0. The pipelines are functional end-to-end. Report issues at
 <https://github.com/EpilepsyCenter/GliaAnalysis/issues>.
 
 ## License
 
-MIT.
+GliaAnalysis is released under the **GNU General Public License v3.0**, like
+NED-Net. See [LICENSE](LICENSE).

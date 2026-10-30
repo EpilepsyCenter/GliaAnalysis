@@ -6,111 +6,32 @@ apps share the same visual building blocks.
 
 from __future__ import annotations
 
-import platform
-import subprocess
-import sys
-
 from dash import html, dcc
 
 
 # ── Native OS file / folder pickers ───────────────────────────────────
-# Ported verbatim from NED-Net's upload.py. AppleScript on macOS opens
-# the dialog in the foreground; tkinter is a cross-platform fallback.
+# Thin wrappers over glia_dash.file_dialogs (ported from NED-Net): the
+# desktop window's own dialog on macOS, AppleScript in a browser on macOS,
+# zenity/kdialog on Linux, tkinter on Windows — also inside the packaged app.
 
 
 def browse_folder(title: str = "Select folder") -> str | None:
     """Open a native folder picker. Returns selected path or None."""
-    if platform.system() == "Darwin":
-        try:
-            r = subprocess.run(
-                ["osascript", "-e",
-                 f'POSIX path of (choose folder with prompt "{title}")'],
-                capture_output=True, text=True, timeout=120,
-            )
-            folder = r.stdout.strip().rstrip("/")
-            return folder if folder else None
-        except Exception:
-            pass
-
-    try:
-        r = subprocess.run(
-            [sys.executable, "-c", "\n".join([
-                "import tkinter as tk",
-                "from tkinter import filedialog",
-                "root = tk.Tk()",
-                "root.withdraw()",
-                "root.attributes('-topmost', True)",
-                "root.update()",
-                f'folder = filedialog.askdirectory(title="{title}")',
-                "root.destroy()",
-                "print(folder or '')",
-            ])],
-            capture_output=True, text=True, timeout=120,
-        )
-        folder = r.stdout.strip()
-        return folder if folder else None
-    except Exception:
-        return None
+    from glia_dash.file_dialogs import pick_folder
+    return pick_folder(title)
 
 
 def browse_file(
     title: str = "Select file",
     filetypes: list[tuple[str, str]] | None = None,
 ) -> str | None:
-    """Open a native file picker. filetypes: list of (label, pattern) tuples."""
+    """Open a native file picker. filetypes: list of (label, pattern) tuples;
+    the extensions in the patterns filter the dialog ("*" = any file)."""
+    from glia_dash.file_dialogs import pick_file
     filetypes = filetypes or [("TIFF images", "*.tif *.tiff"), ("All files", "*")]
-
-    if platform.system() == "Darwin":
-        try:
-            exts = []
-            for _, pattern in filetypes:
-                for tok in pattern.split():
-                    ext = tok.replace("*.", "").strip()
-                    if ext and ext != "*":
-                        exts.append(f'"{ext}"')
-            type_clause = ""
-            if exts:
-                type_clause = f" of type {{{', '.join(exts)}}}"
-            script = (
-                f'POSIX path of (choose file with prompt "{title}"'
-                f"{type_clause})"
-            )
-            r = subprocess.run(
-                ["osascript", "-e", script],
-                capture_output=True, text=True, timeout=120,
-            )
-            path = r.stdout.strip()
-            return path if path else None
-        except Exception:
-            pass
-
-    try:
-        ft_lines = ",\n        ".join(
-            f'("{label}", "{pat}")' for label, pat in filetypes
-        )
-        r = subprocess.run(
-            [sys.executable, "-c", "\n".join([
-                "import tkinter as tk",
-                "from tkinter import filedialog",
-                "root = tk.Tk()",
-                "root.withdraw()",
-                "root.attributes('-topmost', True)",
-                "root.update()",
-                "path = filedialog.askopenfilename(",
-                f'    title="{title}",',
-                "    filetypes=[",
-                f"        {ft_lines}",
-                "    ],",
-                ")",
-                "root.destroy()",
-                "print(path)",
-            ])],
-            capture_output=True, text=True, timeout=120,
-        )
-        path = r.stdout.strip()
-        return path if path else None
-    except Exception:
-        return None
+    exts = [tok for _, pattern in filetypes for tok in pattern.split()
+            if tok not in ("*", "*.*")]
+    return pick_file(title, exts)
 
 
 # ── Layout helpers ────────────────────────────────────────────────────

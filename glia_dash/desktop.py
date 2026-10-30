@@ -391,6 +391,10 @@ def main() -> None:
     # Started from a terminal, macOS would leave the window behind it
     window.events.shown += lambda *_a: _bring_to_front()
 
+    # File/folder pickers open on this window: fast, and with keyboard focus.
+    from glia_dash import file_dialogs
+    file_dialogs.set_native_window(window)
+
     def _on_resized(*args):  # pywebview passes (width, height)
         if len(args) >= 2:
             size["w"], size["h"] = args[0], args[1]

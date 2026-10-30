@@ -12,6 +12,7 @@ hold the letters as outlines, so the app needs no font. Output: glia_dash/assets
   wordmark-light.svg / wordmark-dark.svg  small-size mark on its tile + wordmark
                                           (sidebar)
   icon.svg                                app icon (macOS grid: 824-unit tile in 1024)
+  mark.svg                                small-size mark alone, no tile (websites)
   glia_icon.png / glia_icon.ico / glia.icns / favicon.ico
 
 Design values (from the mockup): "Glia" in ink and "Analysis" in a muted blue-grey,
@@ -234,6 +235,10 @@ def main() -> int:
         for name, detailed in (("logo", True), ("wordmark", False)):
             with open(os.path.join(OUT, f"{name}-{theme}.svg"), "w") as fh:
                 fh.write(build_lockup(detailed, theme))
+    with open(os.path.join(OUT, "mark.svg"), "w") as fh:
+        fh.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="22 22 156 156" '
+                 'width="156" height="156" role="img" aria-label="GliaAnalysis">'
+                 + mark_small() + "</svg>\n")
     big, small = build_icon(False), build_icon(True)
     with open(os.path.join(OUT, "icon.svg"), "w") as fh:
         fh.write(big)
